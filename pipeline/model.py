@@ -253,10 +253,14 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
     current = int(round(max(floor, min(ceil, pl_equivalent))))
 
     bonus = potential_bonus(age, mcfg["potential_bonus_by_age"])
-    potential = int(round(min(ceil, current + bonus * (0.7 + 0.3 * c_final))))
+    pa, pb = mcfg.get("potential_confidence_blend", [0.5, 0.5])
+    potential = int(round(min(ceil, current + bonus * (float(pa) + float(pb) * c_final))))
 
     cur_val = value_from_rating(current, age, market_mult, minutes_factor, mcfg)
-    peak_val = value_from_rating(potential, min(age + 3, mcfg.get("peak_age", 26)), 1.0, 1.0, mcfg)
+    pm = float(mcfg.get("peak_market_blend", 0.5))
+    peak_market = pm + (1.0 - pm) * market_mult
+    peak_val = value_from_rating(potential, min(age + 3, mcfg.get("peak_age", 26)),
+                                 peak_market, 1.0, mcfg) * float(mcfg.get("peak_haircut", 0.78))
     peak_val = max(peak_val, cur_val * 1.05)
 
     fits = []

@@ -55,6 +55,92 @@ CASE_STUDIES = [
 ]
 
 
+
+STAT_LABEL_TO_KEY = {
+    "Goals /90": "goals", "Assists /90": "assists", "Key passes /90": "key_passes",
+    "Dribbles won /90": "dribbles", "Tackles+Int /90": "tackles_int",
+    "Duels won /90": "duels_won", "Clearances /90": "clearances", "Shots /90": "shots",
+}
+
+
+def attach_stat_percentiles(finals):
+    """finals: list of (profile, player) for ONE league.
+    Adds 'pct' to each per-90 keyStat: rank within league + role pool."""
+    pools = {}
+    for pr, _ in finals:
+        pools.setdefault(M.POOLS[pr["pos"]], []).append(pr)
+    for pr, pl in finals:
+        pool = pools[M.POOLS[pr["pos"]]]
+        n = len(pool)
+        for stat in pl["keyStats"]:
+            key = STAT_LABEL_TO_KEY.get(stat["label"])
+            if not key:
+                continue
+            mine = pr["axes"]["raw"][key]
+            less = sum(1 for q in pool if q["axes"]["raw"][key] < mine)
+            equal = sum(1 for q in pool if q["axes"]["raw"][key] == mine)
+            stat["pct"] = round((less + 0.5 * equal) / n, 3)
+
+
+def attach_breakout(finals):
+    """Buy-signal score 0-100: rank + age curve + price room + minutes + raw signal."""
+    for pr, pl in finals:
+        age, cur_val = pr["age"], pl["currentValueM"]
+        parts = [
+            ("rank", 35 * pr["_pct"]),
+            ("age", 25 * max(0.0, min(1.0, (24 - age) / 7.0))),
+            ("price", 20 * max(0.0, min(1.0, 1 - cur_val / 30.0))),
+            ("minutes", 10 * pr["minutes_factor"]),
+            ("signal", 10 * min(1.0, pr["c_abs"] * 1.6)),
+        ]
+        score = int(round(sum(v for _, v in parts)))
+        why = {
+            "rank": f"top {max(1, round((1 - pr['_pct']) * 100))}% of role pool",
+            "age": f"age {age} — curve ahead",
+            "price": f"priced at €{cur_val}M — room to run",
+            "minutes": "trusted with heavy minutes",
+            "signal": "strong underlying output",
+        }
+        top = sorted(parts, key=lambda kv: -kv[1])[:2]
+        pl["breakout"] = score
+        pl["breakoutWhy"] = " · ".join(why[k] for k, _ in top)
+
+
+def attach_similar(all_finals):
+    """Top-3 nearest profiles in the same role pool across the whole board."""
+    import math as _math
+    reg = []
+    for pr, pl in all_finals:
+        vec = [pr["axes"][k] for k in ("finish", "create", "carry", "defend", "involve")]
+        reg.append((M.POOLS[pr["pos"]], vec, pr["age"], pl))
+    for i, (pool_i, vec_i, age_i, pl_i) in enumerate(reg):
+        cands = []
+        for j, (pool_j, vec_j, age_j, pl_j) in enumerate(reg):
+            if i == j:
+                continue
+            d = _math.sqrt(sum((a - b) ** 2 for a, b in zip(vec_i, vec_j))) + 0.03 * abs(age_i - age_j)
+            if pool_i != pool_j:
+                d += 0.9   # prefer same-role matches; cross-pool only fills gaps
+            cands.append((d, pl_j))
+        cands.sort(key=lambda t: t[0])
+        pl_i["similar"] = [{"id": p["id"], "name": p["name"], "club": p["club"], "flag": p["flag"]}
+                           for _, p in cands[:3]]
+
+
+def load_previous(out_path):
+    """id -> (rating, value) from the existing data file, for day-over-day movers."""
+    import re as _re
+    try:
+        raw = out_path.read_text(encoding="utf-8")
+        d = json.loads(_re.search(r"window\.SCOUTLAB_DATA = (.*);", raw, _re.S).group(1).replace("<\\/", "</"))
+        if d.get("meta", {}).get("demo"):
+            return {}, None
+        return ({p["id"]: (p["currentRating"], p["currentValueM"]) for p in d.get("players", [])},
+                d.get("meta", {}).get("generatedAt"))
+    except Exception:
+        return {}, None
+
+
 def pick_season_stats(per_season: dict, candidates: list[dict], min_minutes: float):
     """First candidate season (newest first) where the player has enough minutes.
     Returns (stats, season_label) or (None, None)."""
@@ -77,7 +163,10 @@ def main() -> int:
         return 1
 
     players: list[dict] = []
+    all_finals: list[tuple] = []
     league_summaries = []
+    out_path_early = ROOT / cfg["output"]["data_js"]
+    prev_map, prev_generated = load_previous(out_path_early)
 
     try:
         type_map = client.type_map()
@@ -130,8 +219,11 @@ def main() -> int:
                 n = len(pool)
                 for idx, pr in enumerate(pool):
                     pr["_pct"] = (idx + 0.5) / n   # midpoint rank: never exactly 0 or 1
-            for pr in profiles:
-                players.append(M.finalize(pr, pr["_pct"], pr["_ctx"], cfg))
+            finals = [(pr, M.finalize(pr, pr["_pct"], pr["_ctx"], cfg)) for pr in profiles]
+            attach_stat_percentiles(finals)
+            attach_breakout(finals)
+            all_finals.extend(finals)
+            players.extend(pl for _, pl in finals)
 
             print(f"   kept {len(profiles)} players (≥{int(min_minutes)}' in a considered season, outfield)")
             top_names = sorted(stat_names_seen.items(), key=lambda kv: -kv[1])[:30]
@@ -146,6 +238,13 @@ def main() -> int:
               "Check league names in config.yaml and your plan's season access.", file=sys.stderr)
         return 1
 
+    attach_similar(all_finals)
+    for p in players:
+        if p["id"] in prev_map:
+            r0, v0 = prev_map[p["id"]]
+            p["deltaRating"] = p["currentRating"] - r0
+            p["deltaValueM"] = round(p["currentValueM"] - v0, 1)
+
     # Dedupe (loan/squad duplicates), keep highest-rated instance per id
     players = list({p["id"]: p for p in sorted(players, key=lambda p: p["currentRating"])}.values())
     players.sort(key=lambda p: p["projectedValueM"] - p["currentValueM"], reverse=True)
@@ -156,7 +255,8 @@ def main() -> int:
             "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "source": "Sportmonks · " + ", ".join(league_summaries),
             "demo": False,
-            "model": "scoutlab-heuristic-v1.3",
+            "previousGeneratedAt": prev_generated,
+            "model": "scoutlab-heuristic-v1.4",
         },
         "players": players,
         "cases": CASE_STUDIES,

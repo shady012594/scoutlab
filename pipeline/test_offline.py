@@ -7,8 +7,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 env = {**os.environ, "MOCK_DIR": str(ROOT / "pipeline" / "mock")}
-r = subprocess.run([sys.executable, str(ROOT / "pipeline" / "build_data.py")], env=env)
-assert r.returncode == 0, "pipeline exited non-zero"
+for _ in range(2):   # second run exercises the day-over-day movement pass
+    r = subprocess.run([sys.executable, str(ROOT / "pipeline" / "build_data.py")], env=env)
+    assert r.returncode == 0, "pipeline exited non-zero"
 
 raw = (ROOT / "data" / "scoutlab-data.js").read_text(encoding="utf-8")
 data = json.loads(re.search(r"window\.SCOUTLAB_DATA = (.*);\n$", raw, re.S).group(1).replace("<\\/", "</"))
@@ -22,6 +23,10 @@ for p in players:
     assert all(0 <= v <= 100 for v in p["attributes"].values()), p["id"]
 assert data["meta"]["demo"] is False and data["cases"], "meta/cases missing"
 assert all(p["asOf"] == "2025/2026" for p in players), "season fallback failed: " + str({p["id"]: p["asOf"] for p in players})
+assert all(0 <= p["breakout"] <= 100 and p["breakoutWhy"] for p in players), "breakout missing"
+assert all(len(p.get("similar", [])) >= 1 for p in players), "similar players missing"
+assert all("deltaValueM" in p and "deltaRating" in p for p in players), "movement deltas missing after 2nd run"
+assert any("pct" in s for p in players for s in p["keyStats"]), "stat percentiles missing"
 thin = next(p for p in players if "thinstats" in p["id"])
 assert thin["currentRating"] > 52 and all(f["score"] > 30 for f in thin["leagueFits"]), \
     "thin-stats player collapsed to the floor: " + str(thin["currentRating"]) + " " + str([f["score"] for f in thin["leagueFits"]])

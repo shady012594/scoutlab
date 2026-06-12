@@ -59,13 +59,21 @@ model:
   strength_blend: [0.62, 0.38]  # rating discount = a + b * league_strength
   # Age curve: extra rating headroom by age (linear between anchor points).
   potential_bonus_by_age:
-    17: 16
-    19: 13
-    21: 10
+    17: 13
+    19: 11
+    21: 9
     23: 6
     25: 3
     27: 1
     30: 0
+  # How much of the potential bonus a player earns depends on data confidence:
+  # earned = bonus * (a + b * model_score). Lower b = more cautious ceilings.
+  potential_confidence_blend: [0.5, 0.5]
+  # Peak-case value = value at potential rating, near peak age, then:
+  #   x (0.5 + 0.5 * selling-league market multiplier)   <- you rarely sell at full top-market heat
+  #   x peak_haircut                                      <- projection discount
+  peak_market_blend: 0.5
+  peak_haircut: 0.78
   peak_age: 26
   # Value curve: value_m = value_base * exp(value_slope * (rating - 60)),
   # then shaped by age, market and minutes factors. Tuned so a ~76-rated,
