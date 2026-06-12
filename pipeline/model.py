@@ -262,10 +262,10 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
     fits = []
     for tgt in cfg["fit_targets"]:
         ratio = strength / float(tgt["strength"])
-        fit = c_final * 100 * (0.50 + 0.50 * ratio) + 8 * minutes_factor
+        fit = 12 + c_final * 95 * (0.45 + 0.55 * ratio) + 6 * minutes_factor
         fits.append({
             "league": tgt["name"],
-            "score": int(round(max(30, min(96, fit)))),
+            "score": int(round(max(15, min(96, fit)))),
             "note": fit_note(axes, tgt["name"], ratio),
         })
     fits.sort(key=lambda f: -f["score"])

@@ -156,7 +156,7 @@ def main() -> int:
             "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "source": "Sportmonks · " + ", ".join(league_summaries),
             "demo": False,
-            "model": "scoutlab-heuristic-v1.2",
+            "model": "scoutlab-heuristic-v1.3",
         },
         "players": players,
         "cases": CASE_STUDIES,
