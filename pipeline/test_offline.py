@@ -21,4 +21,5 @@ for p in players:
     assert len(p["leagueFits"]) == 3 and len(p["keyStats"]) == 4, p["id"]
     assert all(0 <= v <= 100 for v in p["attributes"].values()), p["id"]
 assert data["meta"]["demo"] is False and data["cases"], "meta/cases missing"
+assert all(p["asOf"] == "2025/2026" for p in players), "season fallback failed: " + str({p["id"]: p["asOf"] for p in players})
 print("OFFLINE TEST PASSED — restore the demo seed or run the live pipeline before publishing.")

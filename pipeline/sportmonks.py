@@ -3,12 +3,11 @@
 Design notes
 ------------
 * Auth: token from the SPORTMONKS_TOKEN env var, sent as ?api_token=.
-* Robustness over cleverness: stat types and positions are resolved by NAME
-  via API includes (statistics.details.type, player.position), never by
-  hard-coded numeric IDs, so provider-side ID changes can't silently break us.
-* Efficiency: one squad call per team with a deep include pulls every squad
-  player together with their season statistics — ~1 call per team instead of
-  ~25 calls per team.
+* The squads endpoint allows at most 3 levels of nested includes, so stat
+  details arrive with numeric type_ids; names are resolved via one cached
+  pull of the core /types endpoint instead of a 4-deep include.
+* Season rollover safe: leagues are resolved together with their season list
+  so the pipeline can fall back to the most recent season that has data.
 * MOCK_DIR env var switches the client to local JSON fixtures so the whole
   pipeline can be tested offline (used by test_offline.py and CI).
 """
@@ -23,7 +22,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-USER_AGENT = "ScoutLab-pipeline/1.0 (personal project)"
+USER_AGENT = "ScoutLab-pipeline/1.1 (personal project)"
 
 
 class SportmonksError(RuntimeError):
@@ -34,6 +33,7 @@ class Client:
     def __init__(self, cfg: dict):
         api = cfg.get("api", {})
         self.base = api.get("base_url", "https://api.sportmonks.com/v3/football").rstrip("/")
+        self.core_base = self.base.rsplit("/", 1)[0] + "/core"
         self.delay = float(api.get("request_delay_seconds", 0.6))
         self.retries = int(api.get("max_retries", 4))
         self.timeout = int(api.get("timeout_seconds", 25))
@@ -46,24 +46,24 @@ class Client:
                 "(or add it as a GitHub Actions secret named SPORTMONKS_TOKEN)."
             )
         self._calls = 0
+        self._type_map: dict[int, str] | None = None
 
     # ------------------------------------------------------------------ http
 
-    def _mock_path(self, path: str, params: dict) -> Path:
-        """Deterministic fixture filename for a request, e.g. 'leagues' or 'squads_seasons_23_teams_86'."""
+    def _mock_path(self, path: str) -> Path:
         slug = path.strip("/").replace("/", "_")
         return Path(self.mock_dir) / f"{slug}.json"
 
-    def get(self, path: str, params: dict | None = None) -> dict:
+    def _get(self, base: str, path: str, params: dict | None = None) -> dict:
         params = dict(params or {})
         if self.mock_dir:
-            fp = self._mock_path(path, params)
+            fp = self._mock_path(path)
             if not fp.exists():
                 raise SportmonksError(f"[mock] fixture not found: {fp}")
             return json.loads(fp.read_text(encoding="utf-8"))
 
         params["api_token"] = self.token
-        url = f"{self.base}/{path.lstrip('/')}?{urllib.parse.urlencode(params)}"
+        url = f"{base}/{path.lstrip('/')}?{urllib.parse.urlencode(params)}"
         last_err = None
         for attempt in range(1, self.retries + 1):
             try:
@@ -96,13 +96,20 @@ class Client:
                 time.sleep(2 * attempt)
         raise SportmonksError(f"Request failed after {self.retries} attempts: {path} ({last_err})")
 
-    def get_paginated(self, path: str, params: dict | None = None, max_pages: int = 40) -> list[dict]:
-        """Follow v3 pagination, concatenating `data` arrays."""
+    def get(self, path: str, params: dict | None = None) -> dict:
+        return self._get(self.base, path, params)
+
+    def get_core(self, path: str, params: dict | None = None) -> dict:
+        return self._get(self.core_base, path, params)
+
+    def get_paginated(self, path: str, params: dict | None = None,
+                      max_pages: int = 80, core: bool = False) -> list[dict]:
         params = dict(params or {})
+        params.setdefault("per_page", 50)
         out: list[dict] = []
         page = 1
         while page <= max_pages:
-            body = self.get(path, {**params, "page": page})
+            body = (self.get_core if core else self.get)(path, {**params, "page": page})
             data = body.get("data") or []
             if isinstance(data, dict):
                 data = [data]
@@ -115,21 +122,42 @@ class Client:
 
     # ----------------------------------------------------------------- domain
 
-    def resolve_leagues(self, wanted_names: list[str]) -> list[dict]:
-        """Match configured league names against the account's available leagues.
+    def type_map(self) -> dict[int, str]:
+        """id → name for every stat type, fetched once from the core API."""
+        if self._type_map is None:
+            rows = self.get_paginated("types", core=True)
+            self._type_map = {int(r["id"]): (r.get("name") or "").strip()
+                              for r in rows if r.get("id") is not None}
+            if not self._type_map:
+                raise SportmonksError("Could not load the stat type list from /core/types.")
+        return self._type_map
 
-        Returns [{id, name, season_id, season_name}], failing loudly with the
-        actual available names if something in config doesn't match.
+    def resolve_leagues(self, wanted_names: list[str]) -> list[dict]:
+        """Match configured league names against the account's leagues.
+
+        Returns, per league: id, name, and its seasons sorted newest-first as
+        [{id, name, starting_at, is_current}], so callers can fall back to the
+        last completed season when the current one has no stats yet.
         """
-        rows = self.get_paginated("leagues", {"include": "currentSeason"})
-        available = {}
+        rows = self.get_paginated("leagues", {"include": "currentSeason;seasons"})
+        available: dict[str, dict] = {}
         for league in rows:
-            season = league.get("currentseason") or league.get("currentSeason") or {}
+            current = league.get("currentseason") or league.get("currentSeason") or {}
+            seasons = league.get("seasons") or []
+            norm = []
+            for s in seasons:
+                norm.append({
+                    "id": s.get("id"),
+                    "name": s.get("name"),
+                    "starting_at": s.get("starting_at") or "",
+                    "is_current": s.get("id") == current.get("id"),
+                })
+            norm.sort(key=lambda s: (s["is_current"], s["starting_at"] or ""), reverse=True)
+            if not norm and current.get("id"):
+                norm = [{"id": current["id"], "name": current.get("name"),
+                         "starting_at": "", "is_current": True}]
             available[league.get("name", "")] = {
-                "id": league.get("id"),
-                "name": league.get("name"),
-                "season_id": season.get("id"),
-                "season_name": season.get("name"),
+                "id": league.get("id"), "name": league.get("name"), "seasons": norm,
             }
         resolved = []
         for want in wanted_names:
@@ -140,8 +168,8 @@ class Client:
                 raise SportmonksError(
                     f"League '{want}' not found in your plan. Available: {sorted(available)}"
                 )
-            if not hit["season_id"]:
-                raise SportmonksError(f"League '{want}' has no current season exposed — check plan/season access.")
+            if not hit["seasons"]:
+                raise SportmonksError(f"League '{want}' exposes no seasons — check plan/season access.")
             resolved.append(hit)
         return resolved
 
@@ -149,18 +177,15 @@ class Client:
         return self.get_paginated(f"teams/seasons/{season_id}")
 
     def team_squad_with_stats(self, season_id: int, team_id: int) -> list[dict]:
-        """One call: every squad player + season statistics, with names for
-        stat types and positions resolved server-side via includes."""
+        """One call per team. Max nesting on this endpoint is 3, so the chain
+        stops at statistics.details; type names come from type_map()."""
         include = ";".join([
-            "player.statistics.details.type",
+            "player.statistics.details",
             "player.position",
             "player.detailedPosition",
             "player.country",
         ])
-        body = self.get(
-            f"squads/seasons/{season_id}/teams/{team_id}",
-            {"include": include},
-        )
+        body = self.get(f"squads/seasons/{season_id}/teams/{team_id}", {"include": include})
         data = body.get("data") or []
         return data if isinstance(data, list) else [data]
 
@@ -172,8 +197,8 @@ class Client:
 # --------------------------------------------------------------------- stats
 
 def detail_value(detail: dict) -> float | None:
-    """Sportmonks stat detail values arrive as scalars or small dicts like
-    {"total": 12}, {"average": "7.21"}, {"goals": 9, ...}. Normalize to float."""
+    """Stat detail values arrive as scalars or small dicts like {"total": 12},
+    {"average": "7.21"}. Normalize to float."""
     v = detail.get("value")
     if isinstance(v, (int, float)):
         return float(v)
@@ -195,18 +220,24 @@ def detail_value(detail: dict) -> float | None:
     return None
 
 
-def stats_by_name(player: dict, season_id: int) -> dict[str, float]:
-    """Flatten a player's statistics for the given season into {type_name: value}."""
-    out: dict[str, float] = {}
+def stats_by_season(player: dict, type_map: dict[int, str]) -> dict[int, dict[str, float]]:
+    """Flatten a player's statistics into {season_id: {type_name_lower: value}}."""
+    out: dict[int, dict[str, float]] = {}
     for block in player.get("statistics") or []:
-        if season_id and block.get("season_id") not in (season_id, None):
+        sid = block.get("season_id")
+        if sid is None:
             continue
+        bucket = out.setdefault(sid, {})
         for det in block.get("details") or []:
-            t = det.get("type") or {}
-            name = (t.get("name") or "").strip()
+            name = ""
+            t = det.get("type")
+            if isinstance(t, dict):
+                name = (t.get("name") or "").strip()
+            if not name:
+                name = type_map.get(det.get("type_id") or -1, "")
             if not name:
                 continue
             val = detail_value(det)
             if val is not None:
-                out[name] = val
+                bucket[name.lower()] = val
     return out

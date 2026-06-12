@@ -6,6 +6,10 @@ Usage:
     SPORTMONKS_TOKEN=xxxx python3 pipeline/build_data.py
     MOCK_DIR=pipeline/mock python3 pipeline/build_data.py     # offline test run
 
+Season rollover: if the current season has no meaningful minutes yet (e.g. it
+is June and the new season hasn't kicked off), each player is scored from the
+most recent season that does, and labeled accordingly.
+
 Exit codes: 0 ok · 1 config/auth/data error (message says what to fix).
 """
 
@@ -20,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import model as M                      # noqa: E402
-from sportmonks import Client, SportmonksError, stats_by_name   # noqa: E402
+from sportmonks import Client, SportmonksError, stats_by_season   # noqa: E402
 
 try:
     import yaml
@@ -51,8 +55,20 @@ CASE_STUDIES = [
 ]
 
 
+def pick_season_stats(per_season: dict, candidates: list[dict], min_minutes: float):
+    """First candidate season (newest first) where the player has enough minutes.
+    Returns (stats, season_label) or (None, None)."""
+    for season in candidates:
+        stats = per_season.get(season["id"]) or {}
+        if stats.get("minutes played", 0.0) >= min_minutes:
+            return stats, str(season.get("name") or season["id"])
+    return None, None
+
+
 def main() -> int:
     cfg = yaml.safe_load((ROOT / "pipeline" / "config.yaml").read_text(encoding="utf-8"))
+    seasons_back = int(cfg.get("model", {}).get("seasons_back", 1))
+    min_minutes = float(cfg["model"]["min_minutes"])
 
     try:
         client = Client(cfg)
@@ -64,27 +80,35 @@ def main() -> int:
     league_summaries = []
 
     try:
+        type_map = client.type_map()
+        print(f"Loaded {len(type_map)} stat types")
         leagues = client.resolve_leagues(cfg["leagues"])
         for lg in leagues:
-            print(f"== {lg['name']} (season {lg['season_name'] or lg['season_id']}) ==")
-            teams = client.season_teams(lg["season_id"])
+            candidates = lg["seasons"][: seasons_back + 1]   # current + N previous
+            current = candidates[0]
+            print(f"== {lg['name']} (seasons considered: "
+                  f"{', '.join(str(s['name']) for s in candidates)}) ==")
+            teams = client.season_teams(current["id"])
             print(f"   {len(teams)} teams")
             kept = 0
             for team in teams:
-                squad = client.team_squad_with_stats(lg["season_id"], team["id"])
+                squad = client.team_squad_with_stats(current["id"], team["id"])
                 for entry in squad:
                     player = entry.get("player") or {}
-                    stats = stats_by_name(player, lg["season_id"])
+                    per_season = stats_by_season(player, type_map)
+                    stats, season_label = pick_season_stats(per_season, candidates, min_minutes)
+                    if stats is None:
+                        continue
                     scored = M.score_player(
                         entry, stats,
                         ctx={"league_name": lg["name"], "club_name": team.get("name", "—"),
-                             "season_label": str(lg.get("season_name") or "current season")},
+                             "season_label": season_label},
                         cfg=cfg,
                     )
                     if scored:
                         players.append(scored)
                         kept += 1
-            print(f"   kept {kept} players (≥{cfg['model']['min_minutes']}' and outfield)")
+            print(f"   kept {kept} players (≥{int(min_minutes)}' in a considered season, outfield)")
             league_summaries.append(f"{lg['name']}")
     except SportmonksError as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -95,7 +119,7 @@ def main() -> int:
               "Check league names in config.yaml and your plan's season access.", file=sys.stderr)
         return 1
 
-    # Dedupe (loan/squad duplicates), keep highest-minutes instance per id
+    # Dedupe (loan/squad duplicates), keep highest-rated instance per id
     players = list({p["id"]: p for p in sorted(players, key=lambda p: p["currentRating"])}.values())
     players.sort(key=lambda p: p["projectedValueM"] - p["currentValueM"], reverse=True)
     players = players[: int(cfg["output"]["max_players"])]
@@ -105,7 +129,7 @@ def main() -> int:
             "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "source": "Sportmonks · " + ", ".join(league_summaries),
             "demo": False,
-            "model": "scoutlab-heuristic-v1",
+            "model": "scoutlab-heuristic-v1.1",
         },
         "players": players,
         "cases": CASE_STUDIES,

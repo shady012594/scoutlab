@@ -51,6 +51,7 @@ fit_targets:
     strength: 0.78
 
 model:
+  seasons_back: 1            # also consider this many previous seasons when the current one has no stats yet
   min_minutes: 450            # below this, a player is skipped (too little signal)
   rating_floor: 52
   rating_ceiling: 94

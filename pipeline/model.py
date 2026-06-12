@@ -80,14 +80,14 @@ def _squash(x: float, bench: float) -> float:
 def _per90(stats: dict, names: list[str], minutes: float) -> float:
     total = 0.0
     for n in names:
-        total += stats.get(n, 0.0)
+        total += stats.get(n.lower(), 0.0)
     return total / minutes * 90.0 if minutes > 0 else 0.0
 
 
 def _first(stats: dict, names: list[str], default: float = 0.0) -> float:
     for n in names:
-        if n in stats:
-            return stats[n]
+        if n.lower() in stats:
+            return stats[n.lower()]
     return default
 
 
