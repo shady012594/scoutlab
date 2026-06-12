@@ -1,0 +1,79 @@
+# ScoutLab pipeline configuration
+# ---------------------------------
+# Everything the model "believes" lives in this file so you can tune it
+# without touching code. All coefficients are transparent heuristics —
+# this is a toy model in the Jamestown spirit, not Jamestown's model.
+
+api:
+  base_url: "https://api.sportmonks.com/v3/football"
+  # Token comes from the SPORTMONKS_TOKEN environment variable, never this file.
+  request_delay_seconds: 0.6      # polite pacing under per-hour rate limits
+  max_retries: 4
+  timeout_seconds: 25
+
+# Leagues to scout, matched by name against Sportmonks' /leagues list.
+# The free plan includes exactly: Danish Superliga + Scottish Premiership.
+# When you upgrade (Starter = any 5 leagues), just add names here.
+leagues:
+  - "Superliga"            # Denmark
+  - "Premiership"          # Scotland
+
+# How strong each league is relative to the Premier League (1.00).
+# Used to translate per-90 output into a common currency.
+# Sources of truth for tuning: UEFA coefficients, club Elo, transfer flows.
+league_strength:
+  default: 0.55
+  "Superliga": 0.74
+  "Premiership": 0.70
+  "Pro League": 0.76        # Belgium (for when you add it)
+  "Eredivisie": 0.78
+  "Championship": 0.80
+  "Bundesliga": 0.92
+  "Premier League": 1.00
+
+# Rough market temperature: how much buyers pay per unit of quality
+# in each selling league (selling out of small markets earns less).
+league_market_multiplier:
+  default: 0.70
+  "Superliga": 0.80
+  "Premiership": 0.72
+  "Pro League": 0.90
+  "Eredivisie": 0.95
+  "Championship": 1.00
+
+# Leagues we project every player INTO on their detail page.
+fit_targets:
+  - name: "Premier League"
+    strength: 1.00
+  - name: "Bundesliga"
+    strength: 0.92
+  - name: "Eredivisie"
+    strength: 0.78
+
+model:
+  min_minutes: 450            # below this, a player is skipped (too little signal)
+  rating_floor: 52
+  rating_ceiling: 94
+  composite_gamma: 0.78       # <1 lifts mid-range composites toward the band's middle
+  strength_blend: [0.62, 0.38]  # rating discount = a + b * league_strength
+  # Age curve: extra rating headroom by age (linear between anchor points).
+  potential_bonus_by_age:
+    17: 16
+    19: 13
+    21: 10
+    23: 6
+    25: 3
+    27: 1
+    30: 0
+  peak_age: 26
+  # Value curve: value_m = value_base * exp(value_slope * (rating - 60)),
+  # then shaped by age, market and minutes factors. Tuned so a ~76-rated,
+  # 21-year-old elite Superliga starter lands ~€15M today, ~€55-60M peak case.
+  value_base_m: 2.6
+  value_slope: 0.125
+  max_value_m: 180
+
+output:
+  data_js: "data/scoutlab-data.js"
+  max_players: 1200           # safety cap on output size
+  top_stats_per_player: 4
