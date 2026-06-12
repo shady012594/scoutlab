@@ -220,6 +220,10 @@ def raw_profile(squad_entry: dict, stats: dict, cfg: dict) -> dict | None:
 
     return dict(
         pid=player.get("id", ""), name=name, pos=pos, age=age,
+        photo=player.get("image_path") or "",
+        jersey=squad_entry.get("jersey_number"),
+        captain=bool(squad_entry.get("captain")),
+        contract_end=(squad_entry.get("end") or "")[:4],
         iso2=(player.get("country") or {}).get("iso2"),
         nationality=(player.get("country") or {}).get("name") or "—",
         minutes=minutes, minutes_factor=minutes_factor,
@@ -299,7 +303,10 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
         "potentialRating": potential,
         "currentValueM": round(cur_val, 1),
         "projectedValueM": round(peak_val, 1),
-        "contractUntil": "—",
+        "contractUntil": profile.get("contract_end") or "—",
+        "photo": profile.get("photo", ""),
+        **({"jersey": int(profile["jersey"])} if profile.get("jersey") else {}),
+        **({"captain": True} if profile.get("captain") else {}),
         "risk": risk,
         "attributes": attributes,
         "keyStats": build_key_stats(pos, raw, minutes),

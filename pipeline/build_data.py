@@ -128,17 +128,47 @@ def attach_similar(all_finals):
 
 
 def load_previous(out_path):
-    """id -> (rating, value) from the existing data file, for day-over-day movers."""
+    """Previous snapshot: movers map, timestamp, and {id: (name, club)} for squad-change detection."""
     import re as _re
     try:
         raw = out_path.read_text(encoding="utf-8")
         d = json.loads(_re.search(r"window\.SCOUTLAB_DATA = (.*);", raw, _re.S).group(1).replace("<\\/", "</"))
         if d.get("meta", {}).get("demo"):
-            return {}, None
+            return {}, None, {}
         return ({p["id"]: (p["currentRating"], p["currentValueM"]) for p in d.get("players", [])},
-                d.get("meta", {}).get("generatedAt"))
+                d.get("meta", {}).get("generatedAt"),
+                {p["id"]: (p["name"], p["club"]) for p in d.get("players", [])})
     except Exception:
-        return {}, None
+        return {}, None, {}
+
+
+def annotate_focus_club(all_finals, players, focus_name, prev_named):
+    """Mark the focus club's players with role + squad rank; detect joins/leaves."""
+    if not focus_name:
+        return None, {"joined": [], "left": []}
+    tokens = focus_name.lower().split()
+    clubs = {p["club"] for p in players}
+    actual = next((cl for cl in clubs if all(t in cl.lower() for t in tokens)), None)         or next((cl for cl in clubs if tokens[0] in cl.lower()), None)
+    if not actual:
+        print(f"WARNING: focus club '{focus_name}' not found among: {sorted(clubs)}", file=sys.stderr)
+        return None, {"joined": [], "left": []}
+    squad = [(pr, pl) for pr, pl in all_finals if pl["club"] == actual]
+    squad.sort(key=lambda t: -t[1]["currentRating"])
+    for rank, (pr, pl) in enumerate(squad, 1):
+        mf = pr["minutes_factor"]
+        pl["squadRole"] = ("Key starter" if mf > 0.8 else
+                           "Regular" if mf > 0.55 else
+                           "Rotation" if mf > 0.3 else "Fringe")
+        pl["clubRank"] = rank
+        pl["clubSize"] = len(squad)
+    cur_ids = {pl["id"] for _, pl in squad}
+    prev_ids = {pid for pid, (_, club) in prev_named.items() if club == actual}
+    cur_names = {pl["id"]: pl["name"] for _, pl in squad}
+    changes = {"joined": sorted(cur_names[i] for i in cur_ids - prev_ids),
+               "left": sorted(prev_named[i][0] for i in prev_ids - cur_ids)} if prev_ids or prev_named else {"joined": [], "left": []}
+    if not prev_named:
+        changes = {"joined": [], "left": []}
+    return actual, changes
 
 
 def pick_season_stats(per_season: dict, candidates: list[dict], min_minutes: float):
@@ -166,7 +196,7 @@ def main() -> int:
     all_finals: list[tuple] = []
     league_summaries = []
     out_path_early = ROOT / cfg["output"]["data_js"]
-    prev_map, prev_generated = load_previous(out_path_early)
+    prev_map, prev_generated, prev_named = load_previous(out_path_early)
 
     try:
         type_map = client.type_map()
@@ -239,6 +269,8 @@ def main() -> int:
         return 1
 
     attach_similar(all_finals)
+    focus_actual, squad_changes = annotate_focus_club(
+        all_finals, players, cfg.get("focus_club"), prev_named)
     for p in players:
         if p["id"] in prev_map:
             r0, v0 = prev_map[p["id"]]
@@ -256,7 +288,9 @@ def main() -> int:
             "source": "Sportmonks · " + ", ".join(league_summaries),
             "demo": False,
             "previousGeneratedAt": prev_generated,
-            "model": "scoutlab-heuristic-v1.4",
+            "focusClub": focus_actual,
+            "squadChanges": squad_changes,
+            "model": "scoutlab-heuristic-v1.5",
         },
         "players": players,
         "cases": CASE_STUDIES,

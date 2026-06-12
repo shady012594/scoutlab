@@ -27,6 +27,13 @@ assert all(0 <= p["breakout"] <= 100 and p["breakoutWhy"] for p in players), "br
 assert all(len(p.get("similar", [])) >= 1 for p in players), "similar players missing"
 assert all("deltaValueM" in p and "deltaRating" in p for p in players), "movement deltas missing after 2nd run"
 assert any("pct" in s for p in players for s in p["keyStats"]), "stat percentiles missing"
+assert data["meta"].get("focusClub") == "Heart of Midlothian", data["meta"].get("focusClub")
+assert data["meta"].get("squadChanges") == {"joined": [], "left": []}, data["meta"].get("squadChanges")
+hearts = [p for p in players if p["club"] == "Heart of Midlothian"]
+assert hearts and all(p.get("squadRole") and p.get("clubRank") and p.get("jersey") and p["contractUntil"] == "2027" for p in hearts), \
+    "focus-club annotation incomplete: " + str([(p["name"], p.get("squadRole"), p.get("jersey"), p["contractUntil"]) for p in hearts])
+assert any(p.get("captain") for p in hearts), "captain flag missing"
+assert all(p.get("photo") for p in players), "photos missing"
 thin = next(p for p in players if "thinstats" in p["id"])
 assert thin["currentRating"] > 52 and all(f["score"] > 30 for f in thin["leagueFits"]), \
     "thin-stats player collapsed to the floor: " + str(thin["currentRating"]) + " " + str([f["score"] for f in thin["leagueFits"]])

@@ -11,6 +11,9 @@ api:
   max_retries: 4
   timeout_seconds: 25
 
+# The club hub shown on the app's Squad tab. Name-matched against squads.
+focus_club: "Heart of Midlothian"
+
 # Leagues to scout, matched by name against Sportmonks' /leagues list.
 # The free plan includes exactly: Danish Superliga + Scottish Premiership.
 # When you upgrade (Starter = any 5 leagues), just add names here.

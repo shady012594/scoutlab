@@ -187,6 +187,25 @@ h1.screen{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:
 .legend{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px;font-size:12.5px;color:var(--t2)}
 .legend .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:4px}
 
+/* ---------- squad hub ---------- */
+:root{--hearts:#8A1538}
+.pphoto{position:relative;flex:none;border-radius:12px;overflow:hidden;background:rgba(255,255,255,.07)}
+.pphoto .init{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--disp);font-weight:700;color:var(--t2)}
+.pphoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sq-head{border:1px solid rgba(138,21,56,.55);background:linear-gradient(160deg,rgba(138,21,56,.22),rgba(138,21,56,.05))}
+.sq-head .club{font-family:var(--disp);font-weight:700;font-size:24px;letter-spacing:.05em}
+.sq-head .sub{font-size:11.5px;color:var(--t2);margin-top:2px}
+.rolepill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.04em}
+.changes{border:1px solid rgba(64,237,140,.4);background:rgba(64,237,140,.07);border-radius:14px;
+  padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--t1)}
+.posgroup{font-family:var(--disp);font-weight:600;font-size:12.5px;letter-spacing:.16em;
+  color:var(--t3);margin:14px 2px 8px;text-transform:uppercase}
+.valbar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:10px}
+.valbar div{height:100%}
+.vallegend{display:flex;gap:14px;margin-top:6px;font-size:10.5px;color:var(--t3)}
+.pitchwrap text{font-family:var(--disp)}
+
 /* ---------- presets / new features ---------- */
 .chiprow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .chip-p{font-family:var(--disp);font-weight:600;font-size:12.5px;letter-spacing:.08em;
@@ -264,6 +283,9 @@ nav.tabs button .badge .n{
 
 <nav class="tabs" aria-label="Sections">
   <div class="inner">
+    <button data-tab="squad" aria-label="Squad">
+      <svg viewBox="0 0 24 24"><path d="M12 3l7 2.5V11c0 4.8-3 8.4-7 10-4-1.6-7-5.2-7-10V5.5L12 3z"/></svg>SQUAD
+    </button>
     <button data-tab="board" aria-label="Scout Board">
       <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>BOARD
     </button>
@@ -318,6 +340,12 @@ const byId = Object.fromEntries(players.map(p => [p.id, p]));
 
 const euro = m => "€" + (m >= 9.95 ? Math.round(m) : m.toFixed(1)) + "M";
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const initials = n => n.split(/\s+/).map(w=>w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
+const photoEl = (p, size) => `<span class="pphoto" style="width:${size}px;height:${size}px">
+  <span class="init" style="font-size:${Math.round(size*0.36)}px">${esc(initials(p.name))}</span>
+  ${p.photo ? `<img src="${esc(p.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>`;
+const ROLE_STYLE = {"Key starter":"color:var(--bg);background:var(--now)","Regular":"color:var(--bg);background:var(--blue)",
+                    "Rotation":"color:var(--bg);background:var(--peak)","Fringe":"color:var(--t2);background:rgba(255,255,255,.1)"};
 const minutesOf = p => { const s=(p.keyStats||[]).find(x=>x.label==="Minutes"); return s ? (parseInt(s.value)||0) : 0; };
 const PRESETS = {
   all:      {label:"All",           apply:()=>{state.pos="";state.mkt="";state.ageMax="";state.startersOnly=false;state.sort="gap";}},
@@ -329,7 +357,7 @@ const ntp = (a, b, cls="") => `<span class="ntp ${cls}"><b class="now">${esc(a)}
 
 /* ====== state ====== */
 const state = {
-  tab: "board",
+  tab: (typeof META !== "undefined" && META.focusClub) ? "squad" : "board",
   detail: null,          // player id when a detail screen is open
   from: "board",         // tab to return to from detail
   q: "", pos: "", mkt: "", ageMax: "", startersOnly: false,
@@ -466,7 +494,7 @@ function detailScreen(p){
 
   <div class="card">
     <div class="dhead">
-      ${posBadge(p)}
+      ${photoEl(p, 56)}
       <div style="flex:1;min-width:0">
         <h2>${esc(p.flag)} ${esc(p.name)}</h2>
         <div class="club">${esc(p.club)} · ${esc(p.league)}</div>
@@ -475,7 +503,9 @@ function detailScreen(p){
       <button class="starbtn ${watched?"on":""}" data-star="${p.id}" aria-pressed="${watched}" aria-label="${watched?"Remove from":"Add to"} watchlist">${watched?"★":"☆"}</button>
     </div>
     <div class="pillrow">
-      <span class="pill" style="color:${POS[p.position].color};background:rgba(255,255,255,.06)">${POS[p.position].label}</span>
+      <span class="pill" style="color:var(--bg);background:${POS[p.position].color};font-weight:700">${p.position.toUpperCase()} · ${POS[p.position].label}</span>
+      ${p.jersey ? `<span class="pill" style="color:var(--t1);background:rgba(138,21,56,.5)">#${p.jersey}${p.captain ? " · Captain" : ""}</span>` : ""}
+      ${p.squadRole ? `<span class="rolepill" style="${ROLE_STYLE[p.squadRole]};font-size:11.5px;padding:3px 10px">${p.squadRole}</span>` : ""}
       <span class="pill" style="color:var(--t2);background:rgba(255,255,255,.06)">Age ${p.age}</span>
       <span class="pill" style="color:var(--t2);background:rgba(255,255,255,.06)">Contract ${esc(p.contractUntil)}</span>
       <span class="pill" style="color:${RISK[p.risk].color};background:${RISK[p.risk].bg}">${RISK[p.risk].label}</span>
@@ -483,7 +513,8 @@ function detailScreen(p){
       ${typeof p.breakout === "number" ? `<span class="pill" style="color:var(--blue);background:rgba(102,171,255,.13)">Breakout ${p.breakout}</span>` : ""}
       ${typeof p.deltaValueM === "number" && p.deltaValueM !== 0 ? `<span class="pill" style="color:${p.deltaValueM>0?"var(--now)":"var(--red)"};background:rgba(255,255,255,.06)">${p.deltaValueM>0?"▲":"▼"} €${Math.abs(p.deltaValueM)}M since last update</span>` : ""}
     </div>
-    ${p.breakoutWhy ? `<div class="caption" style="margin-top:9px;color:var(--t3)">Buy signal: ${esc(p.breakoutWhy)}</div>` : ""}
+    ${p.clubRank ? `<div class="caption" style="margin-top:9px;color:var(--t3)">Squad rank #${p.clubRank} of ${p.clubSize} by current rating</div>` : ""}
+    ${p.breakoutWhy ? `<div class="caption" style="margin-top:6px;color:var(--t3)">Buy signal: ${esc(p.breakoutWhy)}</div>` : ""}
   </div>
 
   <div class="card">
@@ -550,6 +581,99 @@ function detailScreen(p){
   </div>
 
   <p class="fine">Illustrative demo profile — not real scouting output.</p>`;
+}
+
+function strongestXI(squad){
+  const top = (poss, n) => squad.filter(p=>poss.includes(p.position))
+      .sort((a,b)=>b.currentRating-a.currentRating).slice(0, n);
+  const def = [...top(["fb"],2), ...top(["cb"],2)];
+  const mid = top(["cm","am"],3);
+  const att = top(["w","st"],3);
+  const spots = (list, y, xs) => list.map((p,i)=>({p, x:xs[i], y})).filter(s=>s.p);
+  const placed = [
+    ...spots([def[0]], 352, [62]), ...spots([def[2]], 352, [142]),
+    ...spots([def[3]], 352, [218]), ...spots([def[1]], 352, [298]),
+    ...spots(mid, 242, [88,180,272]),
+    ...spots(att, 128, [80,180,280]),
+  ];
+  const node = s => `<g>
+    <circle cx="${s.x}" cy="${s.y}" r="19" fill="var(--hearts)" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>
+    <text x="${s.x}" y="${s.y+5}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">${s.p.currentRating}</text>
+    <text x="${s.x}" y="${s.y+36}" text-anchor="middle" font-size="10.5" font-weight="600" fill="rgba(255,255,255,.85)">${esc(s.p.name.split(" ").slice(-1)[0])}</text>
+  </g>`;
+  return `<svg class="pitchwrap" viewBox="0 0 360 460" width="100%" style="max-width:380px;display:block;margin:0 auto" role="img" aria-label="Strongest XI">
+    <rect x="8" y="8" width="344" height="444" rx="14" fill="rgba(64,237,140,.05)" stroke="rgba(255,255,255,.14)"/>
+    <line x1="8" y1="230" x2="352" y2="230" stroke="rgba(255,255,255,.12)"/>
+    <circle cx="180" cy="230" r="38" fill="none" stroke="rgba(255,255,255,.12)"/>
+    <rect x="105" y="8" width="150" height="48" fill="none" stroke="rgba(255,255,255,.12)"/>
+    <rect x="105" y="404" width="150" height="48" fill="none" stroke="rgba(255,255,255,.12)"/>
+    <circle cx="180" cy="425" r="17" fill="none" stroke="rgba(255,255,255,.3)" stroke-dasharray="4 3"/>
+    <text x="180" y="429" text-anchor="middle" font-size="10" fill="rgba(255,255,255,.45)">GK</text>
+    ${placed.map(node).join("")}
+  </svg>
+  <p class="caption" style="text-align:center;margin-top:6px;color:var(--t3)">Model's strongest available XI by current rating · goalkeepers aren't modeled</p>`;
+}
+
+function squadScreen(){
+  const club = META.focusClub;
+  const squad = club ? players.filter(p=>p.club === club) : [];
+  if(!squad.length){
+    return `<h1 class="screen">Squad</h1>
+    <div class="rows"><div class="emptywrap"><div class="eicon">▦</div>
+      <h3>No squad data yet</h3>
+      <p>The focus club appears here after the pipeline runs with focus_club set in pipeline/config.yaml.</p>
+    </div></div>`;
+  }
+  const ch = META.squadChanges || {joined:[],left:[]};
+  const total = squad.reduce((a,p)=>a+p.currentValueM,0);
+  const upside = squad.reduce((a,p)=>a+p.gap,0);
+  const avgAge = squad.reduce((a,p)=>a+p.age,0)/squad.length;
+  const groups = [["ATTACK",["st","w","am"]],["MIDFIELD",["cm"]],["DEFENCE",["cb","fb"]]];
+  const gv = poss => squad.filter(p=>poss.includes(p.position)).reduce((a,p)=>a+p.currentValueM,0);
+  const vals = groups.map(([n,poss])=>({n, v:gv(poss)}));
+  const cols = ["var(--red)","var(--now)","var(--blue)"];
+  const movers = squad.filter(p=>typeof p.deltaValueM==="number" && p.deltaValueM!==0)
+                      .sort((a,b)=>Math.abs(b.deltaValueM)-Math.abs(a.deltaValueM)).slice(0,4);
+  const row = p => `<button class="rowbtn" data-open="${p.id}">
+    ${photoEl(p, 46)}
+    <span class="rowmain">
+      <span class="rowname">${esc(p.name)} ${p.captain ? '<span style="color:var(--peak)">©</span>' : ""}</span>
+      <span class="rowsub">${p.jersey ? "#"+p.jersey+" · " : ""}${POS[p.position].label} · Age ${p.age}</span>
+      <span class="rowmeta">${p.squadRole ? `<span class="rolepill" style="${ROLE_STYLE[p.squadRole]}">${p.squadRole}</span>` : ""}</span>
+    </span>
+    <span class="rowright">
+      ${ntp(p.currentRating, p.potentialRating, "big")}<br>
+      ${ntp(euro(p.currentValueM), euro(p.projectedValueM), "small")}
+    </span>
+    <span class="chev">›</span>
+  </button>`;
+  return `
+  <h1 class="screen">Squad</h1>
+  ${(ch.joined.length || ch.left.length) ? `<div class="changes">
+    ${ch.joined.length ? `<b style="color:var(--now)">In:</b> ${ch.joined.map(esc).join(", ")}` : ""}
+    ${ch.joined.length && ch.left.length ? " · " : ""}
+    ${ch.left.length ? `<b style="color:var(--red)">Out:</b> ${ch.left.map(esc).join(", ")}` : ""}
+  </div>` : ""}
+  <div class="card sq-head">
+    <div class="club">${esc(club).toUpperCase()}</div>
+    <div class="sub">${squad.length} modeled players · squad value ${euro(total)} · avg age ${avgAge.toFixed(1)} · ${euro(upside)} peak-case upside</div>
+    <div class="valbar">${vals.map((g,i)=>`<div style="width:${(g.v/Math.max(total,0.1)*100).toFixed(1)}%;background:${cols[i]}"></div>`).join("")}</div>
+    <div class="vallegend">${vals.map((g,i)=>`<span><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cols[i]};margin-right:4px"></span>${g.n} ${euro(g.v)}</span>`).join("")}</div>
+  </div>
+  <div class="card">
+    <div class="eyebrow">Strongest XI · model pick</div>
+    ${strongestXI(squad)}
+  </div>
+  ${movers.length ? `<div class="card"><div class="eyebrow">Squad movers · since last update</div>
+    ${movers.map(p=>`<button class="mover" data-open="${p.id}">
+      <span class="gmain"><span class="gname">${esc(p.name)}</span></span>
+      <span class="arrow" style="color:${p.deltaValueM>0?"var(--now)":"var(--red)"}">${p.deltaValueM>0?"▲":"▼"} €${Math.abs(p.deltaValueM)}M</span>
+      <span class="chev">›</span></button>`).join("")}</div>` : ""}
+  ${groups.map(([label, poss]) => {
+    const g = squad.filter(p=>poss.includes(p.position)).sort((a,b)=>b.currentRating-a.currentRating);
+    return g.length ? `<div class="posgroup">${label}</div><div class="rows">${g.map(row).join("")}</div>` : "";
+  }).join("")}
+  <p class="fine">Squad syncs nightly — signings and departures appear automatically. Ratings, roles and values are model estimates.</p>`;
 }
 
 function compareScreen(a, b){
@@ -743,6 +867,8 @@ function render(){
     document.getElementById("fmkt").addEventListener("change", e => { state.mkt = e.target.value; renderList(); });
     document.getElementById("fsort").addEventListener("change", e => { state.sort = e.target.value; state.preset = ""; render(); });
     document.getElementById("fage").addEventListener("change", e => { state.ageMax = e.target.value ? +e.target.value : ""; state.preset = ""; render(); });
+  } else if(state.tab === "squad"){
+    main.innerHTML = squadScreen();
   } else if(state.tab === "markets"){
     main.innerHTML = marketsScreen();
   } else if(state.tab === "watchlist"){
