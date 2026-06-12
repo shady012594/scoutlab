@@ -189,6 +189,19 @@ class Client:
         data = body.get("data") or []
         return data if isinstance(data, list) else [data]
 
+    def standings(self, season_id: int) -> dict[int, dict]:
+        """team_id -> {position, points} for a season. Empty dict if unavailable."""
+        try:
+            rows = self.get_paginated(f"standings/seasons/{season_id}")
+        except SportmonksError:
+            return {}
+        out = {}
+        for r in rows:
+            tid = r.get("participant_id") or r.get("team_id")
+            if tid is not None:
+                out[int(tid)] = {"position": r.get("position"), "points": r.get("points")}
+        return out
+
     def player_statistics(self, player_id) -> list[dict]:
         """Full per-player statistics — richer detail set than the squads include
         (3-level include is legal from the /players base)."""
@@ -217,7 +230,7 @@ def detail_value(detail: dict) -> float | None:
         except ValueError:
             return None
     if isinstance(v, dict):
-        for key in ("total", "all", "average", "count", "goals"):
+        for key in ("won", "success", "scored", "total", "all", "average", "count", "goals"):
             if key in v and isinstance(v[key], (int, float, str)):
                 try:
                     return float(v[key])

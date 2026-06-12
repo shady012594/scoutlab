@@ -85,6 +85,10 @@ model:
   liquidity_floor_rating: 58
   liquidity_span: 20
   liquidity_min: 0.3
+  # Trajectory: year-on-year output trend scales the potential bonus.
+  trend_ceiling_weight: 0.15
+  # Team context: output in weaker teams is upweighted, in stronger downweighted.
+  team_context_weight: 0.10
   peak_age: 26
   # Value curve: value_m = value_base * exp(value_slope * (rating - 60)),
   # then shaped by age, market and minutes factors. Tuned so a ~76-rated,
@@ -97,3 +101,11 @@ output:
   data_js: "data/scoutlab-data.js"
   max_players: 1200           # safety cap on output size
   top_stats_per_player: 4
+
+# Succession planner: for ageing key players at the focus club, surface
+# affordable young replacements from the scouting board.
+succession:
+  age_from: 29
+  max_value_m: 8
+  max_age: 25
+  options: 3

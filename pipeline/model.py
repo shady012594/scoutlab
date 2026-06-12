@@ -87,6 +87,7 @@ ALIASES = {
     "passes":        ["accurate passes", "passes", "total passes"],
     "shots":         ["shots total", "shots", "total shots", "shots on target"],
     "rating":        ["rating", "average rating"],
+    "penalties":     ["penalties", "penalties scored", "penalty goals"],
 }
 
 
@@ -111,6 +112,8 @@ def _per90(stats: dict, key: str, minutes: float) -> float:
 
 def compute_axes(stats: dict, minutes: float) -> dict:
     goals = _per90(stats, "goals", minutes)
+    pens = _per90(stats, "penalties", minutes)
+    goals_np = max(goals - pens, 0.0)
     assists = _per90(stats, "assists", minutes)
     keyp = _per90(stats, "key_passes", minutes)
     bigch = _per90(stats, "big_chances", minutes)
@@ -122,7 +125,7 @@ def compute_axes(stats: dict, minutes: float) -> dict:
     shots = _per90(stats, "shots", minutes)
 
     return dict(
-        finish=0.75 * _squash(goals, BENCH["goals"]) + 0.25 * _squash(shots, BENCH["shots"]),
+        finish=0.75 * _squash(goals_np, BENCH["goals"]) + 0.25 * _squash(shots, BENCH["shots"]),
         create=0.45 * _squash(assists, BENCH["assists"])
              + 0.35 * _squash(keyp, BENCH["key_passes"])
              + 0.20 * _squash(bigch, BENCH["big_chances"]),
@@ -131,7 +134,8 @@ def compute_axes(stats: dict, minutes: float) -> dict:
              + 0.25 * _squash(clear, BENCH["clearances"])
              + 0.20 * _squash(duels, BENCH["duels_won"]),
         involve=0.6 * _squash(passes, BENCH["passes"]) + 0.4 * _squash(duels, BENCH["duels_won"]),
-        raw=dict(goals=goals, assists=assists, key_passes=keyp, big_chances=bigch,
+        raw=dict(goals=goals, goals_np=goals_np, pens=pens,
+                 assists=assists, key_passes=keyp, big_chances=bigch,
                  dribbles=drib, duels_won=duels, tackles_int=tkl_int,
                  clearances=clear, passes=passes, shots=shots),
     )
@@ -265,7 +269,9 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
 
     bonus = potential_bonus(age, mcfg["potential_bonus_by_age"])
     pa, pb = mcfg.get("potential_confidence_blend", [0.5, 0.5])
-    potential = int(round(min(ceil, current + bonus * (float(pa) + float(pb) * c_final))))
+    trend = profile.get("trend")
+    trend_mult = max(0.7, 1.0 + float(mcfg.get("trend_ceiling_weight", 0.15)) * trend) if trend is not None else 1.0
+    potential = int(round(min(ceil, current + bonus * (float(pa) + float(pb) * c_final) * trend_mult)))
 
     cur_val = value_from_rating(current, age, market_mult, minutes_factor, mcfg)
     pm = float(mcfg.get("peak_market_blend", 0.5))
@@ -288,6 +294,15 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
     fits.sort(key=lambda f: -f["score"])
 
     risk = "low" if (minutes_factor > 0.7 and age >= 21) else ("high" if minutes_factor < 0.45 or age <= 18 else "medium")
+    availability = profile.get("availability")
+    if availability is not None and availability < 45:
+        risk = "high" if risk == "medium" else ("medium" if risk == "low" else risk)
+
+    coverage = sum(1 for v in raw.values() if v > 0)
+    confidence = 0.5 * minutes_factor + 0.5 * min(coverage / 8.0, 1.0)
+    spread = 0.45 - 0.27 * confidence
+    val_low = max(0.1, round(cur_val * (1 - spread), 1))
+    val_high = round(cur_val * (1 + spread), 1)
 
     attributes = dict(
         technique=int(round(35 + 60 * (0.5 * axes["carry"] + 0.5 * axes["create"]))),
@@ -312,6 +327,11 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
         "potentialRating": potential,
         "currentValueM": round(cur_val, 1),
         "projectedValueM": round(peak_val, 1),
+        "valueLowM": val_low,
+        "valueHighM": val_high,
+        "confidence": ("High" if confidence > 0.72 else "Medium" if confidence > 0.45 else "Low"),
+        **({"trend": round(trend, 2)} if trend is not None else {}),
+        **({"availability": int(round(availability))} if availability is not None else {}),
         "contractUntil": profile.get("contract_end") or "—",
         "photo": profile.get("photo", ""),
         **({"jersey": int(profile["jersey"])} if profile.get("jersey") else {}),

@@ -187,6 +187,16 @@ h1.screen{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:
 .legend{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px;font-size:12.5px;color:var(--t2)}
 .legend .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:4px}
 
+/* ---------- v2 additions ---------- */
+.efftab{display:grid;grid-template-columns:28px 1fr 44px 64px 56px;gap:4px 8px;font-size:12px;align-items:baseline}
+.efftab .eh{font-family:var(--disp);font-weight:600;font-size:10.5px;letter-spacing:.1em;color:var(--t3)}
+.efftab .num{font-family:var(--mono);font-weight:600;text-align:right}
+.efftab .focusrow{color:#fff;background:rgba(138,21,56,.28);border-radius:6px;padding:2px 4px;margin:0 -4px}
+.succ-t{font-weight:700;font-size:14px;margin:10px 0 4px}
+.succ-t:first-of-type{margin-top:0}
+.succ-t .meta{font-weight:400;font-size:11.5px;color:var(--t3)}
+.agechart text{font-family:var(--disp)}
+
 /* ---------- stat profile bars ---------- */
 .sp{display:grid;grid-template-columns:minmax(96px,1.1fr) 2fr 44px 52px;gap:8px;align-items:center;margin-bottom:7px}
 .sp .spl{font-size:11.5px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -519,6 +529,9 @@ function detailScreen(p){
       <span class="pill" style="color:${RISK[p.risk].color};background:${RISK[p.risk].bg}">${RISK[p.risk].label}</span>
       <span class="pill" style="color:var(--t3);background:rgba(255,255,255,.05)">Data: ${esc(p.asOf)}</span>
       ${typeof p.breakout === "number" ? `<span class="pill" style="color:var(--blue);background:rgba(102,171,255,.13)">Breakout ${p.breakout}</span>` : ""}
+      ${typeof p.trend === "number" && Math.abs(p.trend) >= 0.12 ? `<span class="pill" style="color:${p.trend>0?"var(--now)":"var(--red)"};background:rgba(255,255,255,.06)">${p.trend>0?"▲ Rising":"▼ Fading"} ${Math.round(Math.abs(p.trend)*100)}% YoY</span>` : ""}
+      ${typeof p.availability === "number" ? `<span class="pill" style="color:${p.availability>=75?"var(--now)":p.availability>=50?"var(--peak)":"var(--red)"};background:rgba(255,255,255,.06)">Availability ${p.availability}</span>` : ""}
+      ${p.override ? `<span class="pill" style="color:var(--peak);background:rgba(255,186,64,.13)">Analyst override</span>` : ""}
       ${typeof p.deltaValueM === "number" && p.deltaValueM !== 0 ? `<span class="pill" style="color:${p.deltaValueM>0?"var(--now)":"var(--red)"};background:rgba(255,255,255,.06)">${p.deltaValueM>0?"▲":"▼"} €${Math.abs(p.deltaValueM)}M since last update</span>` : ""}
     </div>
     ${p.clubRank ? `<div class="caption" style="margin-top:9px;color:var(--t3)">Squad rank #${p.clubRank} of ${p.clubSize} by current rating</div>` : ""}
@@ -547,6 +560,7 @@ function detailScreen(p){
       </div>
     </div>
     <div class="gapnote">+${euro(p.gap)} value gap · ${p.mult.toFixed(1)}× upside multiple</div>
+    ${typeof p.valueLowM === "number" ? `<div class="gapnote" style="margin-top:4px">Model range ${euro(p.valueLowM)}–${euro(p.valueHighM)} · ${esc(p.confidence||"")} confidence</div>` : ""}
   </div>
 
   <div class="card">
@@ -599,6 +613,28 @@ function detailScreen(p){
   </div>
 
   <p class="fine">Illustrative demo profile — not real scouting output.</p>`;
+}
+
+function ageChart(squad){
+  const W=360, H=235, x0=34, x1=346, y0=200, y1=26;
+  const maxMin = Math.max(...squad.map(minutesOf), 1);
+  const X = a => x0 + (Math.min(Math.max(a,16),35)-16)/(35-16)*(x1-x0);
+  const Y = m => y0 - (m/maxMin)*(y0-y1);
+  const dots = squad.map(p=>{
+    const lbl = p.squadRole === "Key starter" ? `<text x="${X(p.age).toFixed(1)}" y="${(Y(minutesOf(p))-9).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="rgba(255,255,255,.75)">${esc(p.name.split(" ").slice(-1)[0])}</text>` : "";
+    return `${lbl}<circle cx="${X(p.age).toFixed(1)}" cy="${Y(minutesOf(p)).toFixed(1)}" r="5"
+      fill="var(--hearts)" stroke="${p.captain?"var(--peak)":"rgba(255,255,255,.5)"}" stroke-width="${p.captain?2:1}"/>`;
+  }).join("");
+  const ticks = [18,22,26,30,34].map(a=>`<text x="${X(a).toFixed(1)}" y="${y0+14}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,.4)">${a}</text>`).join("");
+  return `<svg class="agechart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Squad age balance">
+    <rect x="${X(24).toFixed(1)}" y="${y1}" width="${(X(29)-X(24)).toFixed(1)}" height="${y0-y1}" fill="rgba(64,237,140,.07)"/>
+    <text x="${((X(24)+X(29))/2).toFixed(1)}" y="${y1+11}" text-anchor="middle" font-size="8.5" fill="rgba(64,237,140,.6)" letter-spacing="1.5">PEAK YEARS</text>
+    <line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="rgba(255,255,255,.15)"/>
+    ${ticks}
+    <text x="${x0-6}" y="${y1+4}" text-anchor="end" font-size="8.5" fill="rgba(255,255,255,.4)">MINS</text>
+    ${dots}
+  </svg>
+  <p class="caption" style="text-align:center;margin-top:4px;color:var(--t3)">Each dot is a player · green band = prime years · amber ring = captain</p>`;
 }
 
 function strongestXI(squad){
@@ -682,6 +718,22 @@ function squadScreen(){
     <div class="eyebrow">Strongest XI · model pick</div>
     ${strongestXI(squad)}
   </div>
+  <div class="card">
+    <div class="eyebrow">Age balance · minutes vs age</div>
+    ${ageChart(squad)}
+  </div>
+  ${(META.succession && META.succession.length) ? `<div class="card">
+    <div class="eyebrow">Succession planner · who replaces the veterans</div>
+    ${META.succession.map(s=>`
+      <div class="succ-t">${esc(s.name)} <span class="meta">${s.age} · ${POS[s.position].label} · ${esc(s.role)}</span></div>
+      ${s.options.length ? s.options.map(o=>`<button class="gaprow" data-open="${o.id}">
+        <span class="gmain"><span class="gname">${esc(o.flag)} ${esc(o.name)}</span><br>
+          <span class="gclub">${esc(o.club)} · ${o.age}yo · peak ${o.potential}</span></span>
+        <span class="gright"><span class="gap" style="color:var(--now)">${euro(o.value)}</span><br>
+          <span class="gclub">Breakout ${o.breakout}</span></span>
+        <span class="chev">›</span></button>`).join("")
+      : `<p class="caption" style="color:var(--t3)">No affordable young option on the board yet — widen the scouted leagues.</p>`}`).join("")}
+  </div>` : ""}
   ${movers.length ? `<div class="card"><div class="eyebrow">Squad movers · since last update</div>
     ${movers.map(p=>`<button class="mover" data-open="${p.id}">
       <span class="gmain"><span class="gname">${esc(p.name)}</span></span>
@@ -760,6 +812,16 @@ function marketsScreen(){
         <span class="chev">›</span>
       </button>`).join("")}
   </div>
+
+  ${(META.clubTable||[]).map(tab=>`<div class="card">
+    <div class="eyebrow">${esc(tab.league)} · squad value vs results</div>
+    <div class="efftab">
+      <span class="eh">#</span><span class="eh">CLUB</span><span class="eh num">PTS</span><span class="eh num">VALUE</span><span class="eh num">€/PT</span>
+      ${tab.rows.map(r=>{const f = r.club===META.focusClub ? "focusrow" : "";
+        return `<span class="num ${f}">${r.position}</span><span class="${f}">${esc(r.club)}</span><span class="num ${f}">${r.points}</span><span class="num ${f}">${euro(r.valueM)}</span><span class="num ${f}">${r.perPoint}</span>`;}).join("")}
+    </div>
+    <p class="caption" style="margin-top:8px;color:var(--t3)">Lower €/pt = more results per euro of modeled squad value — the Bloom thesis in one column.</p>
+  </div>`).join("")}
 
   <div class="card">
     <div class="eyebrow">Value gap by market</div>

@@ -64,7 +64,7 @@ STAT_LABEL_TO_KEY = {
 
 
 PROFILE_METRICS = [
-    ("goals", "Goals"), ("assists", "Assists"), ("shots", "Shots"),
+    ("goals", "Goals"), ("goals_np", "Non-pen goals"), ("assists", "Assists"), ("shots", "Shots"),
     ("key_passes", "Key passes"), ("big_chances", "Big chances created"),
     ("dribbles", "Dribbles won"), ("duels_won", "Duels won"),
     ("tackles_int", "Tackles + interceptions"), ("clearances", "Clearances"),
@@ -86,6 +86,8 @@ def attach_stat_percentiles(finals):
             pool_max = max(q["axes"]["raw"][key] for q in pool)
             if pool_max <= 0:
                 continue
+            if key == "goals_np" and max(q["axes"]["raw"]["pens"] for q in pool) <= 0:
+                continue   # identical to Goals when nobody takes penalties
             mine = pr["axes"]["raw"][key]
             less = sum(1 for q in pool if q["axes"]["raw"][key] < mine)
             equal = sum(1 for q in pool if q["axes"]["raw"][key] == mine)
@@ -108,11 +110,12 @@ def attach_breakout(finals):
     for pr, pl in finals:
         age, cur_val = pr["age"], pl["currentValueM"]
         parts = [
-            ("rank", 35 * pr["_pct"]),
-            ("age", 25 * max(0.0, min(1.0, (24 - age) / 7.0))),
-            ("price", 20 * max(0.0, min(1.0, 1 - cur_val / 30.0))),
+            ("rank", 30 * pr["_pct"]),
+            ("age", 22 * max(0.0, min(1.0, (24 - age) / 7.0))),
+            ("price", 18 * max(0.0, min(1.0, 1 - cur_val / 30.0))),
             ("minutes", 10 * pr["minutes_factor"]),
             ("signal", 10 * min(1.0, pr["c_abs"] * 1.6)),
+            ("trend", 10 * max(0.0, pr.get("trend") or 0.0)),
         ]
         score = int(round(sum(v for _, v in parts)))
         why = {
@@ -121,6 +124,7 @@ def attach_breakout(finals):
             "price": f"priced at €{cur_val}M — room to run",
             "minutes": "trusted with heavy minutes",
             "signal": "strong underlying output",
+            "trend": "output rising year-on-year",
         }
         top = sorted(parts, key=lambda kv: -kv[1])[:2]
         pl["breakout"] = score
@@ -146,6 +150,63 @@ def attach_similar(all_finals):
         cands.sort(key=lambda t: t[0])
         pl_i["similar"] = [{"id": p["id"], "name": p["name"], "club": p["club"], "flag": p["flag"]}
                            for _, p in cands[:3]]
+
+
+def apply_overrides(players, path):
+    try:
+        ov = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("players") or {}
+    except FileNotFoundError:
+        return 0
+    hits = 0
+    for key, rules in ov.items():
+        for p in players:
+            if key.lower() not in p["name"].lower():
+                continue
+            hits += 1
+            p["override"] = True
+            if "rating" in rules:
+                p["currentRating"] = int(rules["rating"])
+                p["potentialRating"] = max(p["currentRating"], p["potentialRating"])
+            if "value_cap" in rules and p["currentValueM"] > float(rules["value_cap"]):
+                ratio = float(rules["value_cap"]) / p["currentValueM"]
+                p["currentValueM"] = round(float(rules["value_cap"]), 1)
+                p["projectedValueM"] = round(max(p["currentValueM"] * 1.05, p["projectedValueM"] * ratio), 1)
+                p["valueLowM"] = max(0.1, round(p["valueLowM"] * ratio, 1))
+                p["valueHighM"] = round(p["valueHighM"] * ratio, 1)
+                p["comps"].append("Analyst value cap applied.")
+            if "contract" in rules:
+                year = int(rules["contract"])
+                p["contractUntil"] = str(year)
+                if year <= 2027:
+                    for f in ("currentValueM", "projectedValueM", "valueLowM", "valueHighM"):
+                        p[f] = max(0.1, round(p[f] * 0.7, 1))
+                    p["comps"].append(f"Contract {year} — expiring-deal discount applied.")
+            if "note" in rules:
+                p["notes"] += " Analyst note: " + str(rules["note"])
+    return hits
+
+
+def build_succession(players, focus_club, scfg):
+    if not focus_club:
+        return []
+    ageing = [p for p in players if p["club"] == focus_club
+              and p.get("squadRole") in ("Key starter", "Regular")
+              and p["age"] >= int(scfg.get("age_from", 29))]
+    plans = []
+    for tgt in sorted(ageing, key=lambda p: -p["age"]):
+        opts = [p for p in players if p["club"] != focus_club
+                and p["position"] == tgt["position"]
+                and p["age"] <= int(scfg.get("max_age", 25))
+                and p["currentValueM"] <= float(scfg.get("max_value_m", 8))]
+        opts.sort(key=lambda p: (-(p.get("breakout") or 0), -p["potentialRating"]))
+        opts = opts[: int(scfg.get("options", 3))]
+        plans.append({"name": tgt["name"], "position": tgt["position"], "age": tgt["age"],
+                      "role": tgt.get("squadRole", ""),
+                      "options": [{"id": o["id"], "name": o["name"], "club": o["club"], "flag": o["flag"],
+                                   "age": o["age"], "value": o["currentValueM"],
+                                   "potential": o["potentialRating"], "breakout": o.get("breakout", 0)}
+                                  for o in opts]})
+    return plans
 
 
 def load_previous(out_path):
@@ -194,12 +255,34 @@ def annotate_focus_club(all_finals, players, focus_name, prev_named):
 
 def pick_season_stats(per_season: dict, candidates: list[dict], min_minutes: float):
     """First candidate season (newest first) where the player has enough minutes.
-    Returns (stats, season_label) or (None, None)."""
+    Returns (stats, season_label, season_id) or (None, None, None)."""
     for season in candidates:
         stats = per_season.get(season["id"]) or {}
         if stats.get("minutes played", 0.0) >= min_minutes:
-            return stats, str(season.get("name") or season["id"])
-    return None, None
+            return stats, str(season.get("name") or season["id"]), season["id"]
+    return None, None, None
+
+
+def output_per90(stats: dict) -> float:
+    """Attacking-output proxy used for year-on-year trend."""
+    mins = stats.get("minutes played", 0.0)
+    if mins <= 0:
+        return 0.0
+    return (stats.get("goals", 0.0) + stats.get("assists", 0.0)
+            + 0.3 * stats.get("key passes", 0.0)) / mins * 90.0
+
+
+def compute_trend(per_season: dict, chosen_sid: int):
+    """(trend in [-1,1], prev_minutes) vs the most recent earlier season with 600'+."""
+    prev_sids = sorted((sid for sid, st in per_season.items()
+                        if sid < chosen_sid and st.get("minutes played", 0.0) >= 600), reverse=True)
+    if not prev_sids:
+        return None, None
+    prev = per_season[prev_sids[0]]
+    now_o = output_per90(per_season[chosen_sid])
+    prev_o = output_per90(prev)
+    t = max(-1.0, min(1.0, (now_o - prev_o) / max(prev_o, 0.2)))
+    return t, prev.get("minutes played", 0.0)
 
 
 def main() -> int:
@@ -215,6 +298,7 @@ def main() -> int:
 
     players: list[dict] = []
     all_finals: list[tuple] = []
+    club_tables: list[dict] = []
     league_summaries = []
     out_path_early = ROOT / cfg["output"]["data_js"]
     prev_map, prev_generated, prev_named = load_previous(out_path_early)
@@ -242,10 +326,20 @@ def main() -> int:
                 print(f"   no squads registered for {season['name']} yet — trying previous season")
 
             focus_tokens = (cfg.get("focus_club") or "").lower().split()
+            standings = client.standings(season["id"])
+            n_teams = max(len(standings), 1)
+            ctx_w = float(cfg["model"].get("team_context_weight", 0.10))
+            team_names = {t.get("id"): t.get("name", "—") for t, _ in squads_by_team}
             # Pass 1: parse + filter every squad entry into a raw profile
             stat_names_seen = {}
             profiles = []
             for team, squad in squads_by_team:
+                trow = standings.get(team.get("id")) or {}
+                if trow.get("position") and n_teams > 1:
+                    rank01 = (trow["position"] - 1) / (n_teams - 1)
+                    team_factor = 1.0 + ctx_w * (0.5 - rank01) * 2.0
+                else:
+                    team_factor = 1.0
                 is_focus = focus_tokens and all(t in (team.get("name") or "").lower() for t in focus_tokens)
                 if is_focus and squad:
                     print(f"   deep-fetching full stats for {team.get('name')} ({len(squad)} players)")
@@ -261,15 +355,29 @@ def main() -> int:
                     for bucket in per_season.values():
                         for name in bucket:
                             stat_names_seen[name] = stat_names_seen.get(name, 0) + 1
-                    stats, season_label = pick_season_stats(per_season, candidates, min_minutes)
+                    stats, season_label, chosen_sid = pick_season_stats(per_season, candidates, min_minutes)
                     if stats is None:
                         continue
                     profile = M.raw_profile(entry, stats, cfg)
                     if profile:
+                        profile["c_abs"] = max(0.0, min(1.0, profile["c_abs"] * team_factor))
+                        trend, prev_min = compute_trend(per_season, chosen_sid)
+                        profile["trend"] = trend
+                        profile["minutes_prev"] = prev_min
                         profile["_ctx"] = {"league_name": lg["name"],
                                            "club_name": team.get("name", "—"),
                                            "season_label": season_label}
                         profiles.append(profile)
+
+            # Availability: durability vs the league's iron men, this season + last
+            if profiles:
+                max_now = max(pr["minutes"] for pr in profiles)
+                prev_pool = [pr["minutes_prev"] for pr in profiles if pr["minutes_prev"]]
+                max_prev = max(prev_pool) if prev_pool else max_now
+                for pr in profiles:
+                    now_share = pr["minutes"] / max_now if max_now else 0
+                    prev_share = (pr["minutes_prev"] / max_prev) if pr["minutes_prev"] else now_share
+                    pr["availability"] = 100 * (0.6 * now_share + 0.4 * prev_share)
 
             # Pass 2: percentile rank within league + role pool, then finalize
             pools = {}
@@ -286,6 +394,21 @@ def main() -> int:
             all_finals.extend(finals)
             players.extend(pl for _, pl in finals)
 
+            if standings:
+                by_club = {}
+                for pr, pl in finals:
+                    by_club.setdefault(pl["club"], 0.0)
+                    by_club[pl["club"]] += pl["currentValueM"]
+                rows = []
+                for tid, srow in standings.items():
+                    cname = team_names.get(tid)
+                    if cname and srow.get("points") is not None:
+                        val = round(by_club.get(cname, 0.0), 1)
+                        rows.append({"club": cname, "position": srow["position"], "points": srow["points"],
+                                     "valueM": val,
+                                     "perPoint": round(val / max(srow["points"], 1), 2)})
+                rows.sort(key=lambda r: r["position"] or 99)
+                club_tables.append({"league": lg["name"], "rows": rows})
             print(f"   kept {len(profiles)} players (≥{int(min_minutes)}' in a considered season, outfield)")
             top_names = sorted(stat_names_seen.items(), key=lambda kv: -kv[1])[:30]
             print("   stat types seen: " + ", ".join(f"{n} ({c})" for n, c in top_names))
@@ -300,6 +423,9 @@ def main() -> int:
         return 1
 
     attach_similar(all_finals)
+    n_ov = apply_overrides(players, ROOT / "pipeline" / "overrides.yaml")
+    if n_ov:
+        print(f"Applied analyst overrides to {n_ov} player(s)")
     focus_actual, squad_changes = annotate_focus_club(
         all_finals, players, cfg.get("focus_club"), prev_named)
     for p in players:
@@ -321,7 +447,9 @@ def main() -> int:
             "previousGeneratedAt": prev_generated,
             "focusClub": focus_actual,
             "squadChanges": squad_changes,
-            "model": "scoutlab-heuristic-v1.6",
+            "succession": build_succession(players, focus_actual, cfg.get("succession") or {}),
+            "clubTable": club_tables,
+            "model": "scoutlab-heuristic-v2.0",
         },
         "players": players,
         "cases": CASE_STUDIES,

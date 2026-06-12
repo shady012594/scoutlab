@@ -42,6 +42,17 @@ striker_d = next(p for p in players if p["id"].startswith("test-striker-d"))
 assert len(striker_d.get("statProfile", [])) >= 6, "deep-fetched stat profile too thin: " + str(striker_d.get("statProfile"))
 assert any("Duels" in s["label"] for s in striker_d["statProfile"]), "merged deep stats missing"
 assert striker_d.get("statCoverage", 0) >= 8, striker_d.get("statCoverage")
+striker_a = next(p for p in players if p["id"].startswith("test-striker-a"))
+assert striker_a.get("trend", 0) > 0.1, f"rising trend missing: {striker_a.get('trend')}"
+assert vet.get("trend", 0) < -0.1, f"fading trend missing: {vet.get('trend')}"
+assert any(s["label"] == "Non-pen goals" for s in striker_a["statProfile"]), "penalty stripping missing"
+assert all(1 <= p.get("availability", 0) <= 100 for p in players), "availability out of range"
+assert all(p["valueLowM"] <= p["currentValueM"] <= p["valueHighM"] for p in players), "value range broken"
+assert all(p.get("confidence") in ("Low","Medium","High") for p in players), "confidence missing"
+assert vet.get("override") and vet["currentValueM"] <= 2.0, f"override not applied: {vet['currentValueM']}"
+assert len(data["meta"].get("clubTable", [])) == 2, "club efficiency tables missing"
+succ = data["meta"].get("succession", [])
+assert succ and succ[0]["options"], "succession plan empty: " + str(succ)
 thin = next(p for p in players if "thinstats" in p["id"])
 assert thin.get("statProfile") is not None, "statProfile missing on thin player"
 assert thin["currentRating"] > 52 and all(f["score"] > 30 for f in thin["leagueFits"]), \

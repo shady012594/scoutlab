@@ -1,0 +1,22 @@
+# ScoutLab analyst overrides — your judgement on top of the model.
+# Match is by player name (case-insensitive substring). Fields:
+#   value_cap: 4      -> cap current value in EUR millions (peak scales down with it)
+#   contract: 2027    -> contract year shown on the card; expiring deals (this year
+#                        or next) get a 30% value discount, noted in market intel
+#   rating: 70        -> hard-set the current rating (potential keeps its gap logic)
+#   note: "..."       -> appended to the scout report, marked as analyst note
+#
+# Examples (uncomment and edit):
+# players:
+#   "Elton Kabangu":
+#     value_cap: 2
+#     note: "Squad striker, unlikely to command a fee."
+#   "Lawrence Shankland":
+#     contract: 2026
+#
+# The entry below targets a test fixture player and never matches anyone real —
+# it exists so the automated tests prove overrides work. Safe to leave or delete.
+players:
+  "Test Veteran Striker S":
+    value_cap: 2
+    note: "Override system self-test."
