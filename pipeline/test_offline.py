@@ -13,7 +13,7 @@ assert r.returncode == 0, "pipeline exited non-zero"
 raw = (ROOT / "data" / "scoutlab-data.js").read_text(encoding="utf-8")
 data = json.loads(re.search(r"window\.SCOUTLAB_DATA = (.*);\n$", raw, re.S).group(1).replace("<\\/", "</"))
 players = data["players"]
-assert len(players) == 6, f"expected 6 mock players, got {len(players)}"
+assert len(players) == 7, f"expected 7 mock players, got {len(players)}"
 for p in players:
     assert p["potentialRating"] >= p["currentRating"], p["id"]
     assert p["projectedValueM"] > p["currentValueM"] > 0, p["id"]
@@ -22,4 +22,7 @@ for p in players:
     assert all(0 <= v <= 100 for v in p["attributes"].values()), p["id"]
 assert data["meta"]["demo"] is False and data["cases"], "meta/cases missing"
 assert all(p["asOf"] == "2025/2026" for p in players), "season fallback failed: " + str({p["id"]: p["asOf"] for p in players})
+thin = next(p for p in players if "thinstats" in p["id"])
+assert thin["currentRating"] > 52 and all(f["score"] > 30 for f in thin["leagueFits"]), \
+    "thin-stats player collapsed to the floor: " + str(thin["currentRating"]) + " " + str([f["score"] for f in thin["leagueFits"]])
 print("OFFLINE TEST PASSED — restore the demo seed or run the live pipeline before publishing.")

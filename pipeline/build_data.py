@@ -85,30 +85,57 @@ def main() -> int:
         leagues = client.resolve_leagues(cfg["leagues"])
         for lg in leagues:
             candidates = lg["seasons"][: seasons_back + 1]   # current + N previous
-            current = candidates[0]
             print(f"== {lg['name']} (seasons considered: "
                   f"{', '.join(str(s['name']) for s in candidates)}) ==")
-            teams = client.season_teams(current["id"])
-            print(f"   {len(teams)} teams")
-            kept = 0
-            for team in teams:
-                squad = client.team_squad_with_stats(current["id"], team["id"])
+
+            # Squad-level rollover fallback: a brand-new season can have teams
+            # but no registered squads yet — step back until squads exist.
+            squads_by_team = []
+            for season in candidates:
+                teams = client.season_teams(season["id"])
+                squads_by_team = [(team, client.team_squad_with_stats(season["id"], team["id"]))
+                                  for team in teams]
+                total_entries = sum(len(s) for _, s in squads_by_team)
+                print(f"   {season['name']}: {len(teams)} teams, {total_entries} squad entries")
+                if total_entries > 0:
+                    break
+                print(f"   no squads registered for {season['name']} yet — trying previous season")
+
+            # Pass 1: parse + filter every squad entry into a raw profile
+            stat_names_seen = {}
+            profiles = []
+            for team, squad in squads_by_team:
                 for entry in squad:
                     player = entry.get("player") or {}
                     per_season = stats_by_season(player, type_map)
+                    for bucket in per_season.values():
+                        for name in bucket:
+                            stat_names_seen[name] = stat_names_seen.get(name, 0) + 1
                     stats, season_label = pick_season_stats(per_season, candidates, min_minutes)
                     if stats is None:
                         continue
-                    scored = M.score_player(
-                        entry, stats,
-                        ctx={"league_name": lg["name"], "club_name": team.get("name", "—"),
-                             "season_label": season_label},
-                        cfg=cfg,
-                    )
-                    if scored:
-                        players.append(scored)
-                        kept += 1
-            print(f"   kept {kept} players (≥{int(min_minutes)}' in a considered season, outfield)")
+                    profile = M.raw_profile(entry, stats, cfg)
+                    if profile:
+                        profile["_ctx"] = {"league_name": lg["name"],
+                                           "club_name": team.get("name", "—"),
+                                           "season_label": season_label}
+                        profiles.append(profile)
+
+            # Pass 2: percentile rank within league + role pool, then finalize
+            pools = {}
+            for pr in profiles:
+                pools.setdefault(M.POOLS[pr["pos"]], []).append(pr)
+            for pool in pools.values():
+                pool.sort(key=lambda p: (p["c_abs"], p["minutes"]))
+                n = len(pool)
+                for idx, pr in enumerate(pool):
+                    pr["_pct"] = (idx + 0.5) / n   # midpoint rank: never exactly 0 or 1
+            for pr in profiles:
+                players.append(M.finalize(pr, pr["_pct"], pr["_ctx"], cfg))
+
+            print(f"   kept {len(profiles)} players (≥{int(min_minutes)}' in a considered season, outfield)")
+            top_names = sorted(stat_names_seen.items(), key=lambda kv: -kv[1])[:30]
+            print("   stat types seen: " + ", ".join(f"{n} ({c})" for n, c in top_names))
             league_summaries.append(f"{lg['name']}")
     except SportmonksError as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -129,7 +156,7 @@ def main() -> int:
             "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "source": "Sportmonks · " + ", ".join(league_summaries),
             "demo": False,
-            "model": "scoutlab-heuristic-v1.1",
+            "model": "scoutlab-heuristic-v1.2",
         },
         "players": players,
         "cases": CASE_STUDIES,
