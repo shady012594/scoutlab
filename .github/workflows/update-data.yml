@@ -1,0 +1,42 @@
+name: Update ScoutLab data
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Offline sanity test (mock fixtures)
+        run: python pipeline/test_offline.py
+
+      - name: Build live data
+        env:
+          SPORTMONKS_TOKEN: ${{ secrets.SPORTMONKS_TOKEN }}
+        run: python pipeline/build_data.py
+
+      - name: Commit refreshed data
+        run: |
+          git config user.name "scoutlab-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/scoutlab-data.js
+          git diff --cached --quiet && echo "No data changes today." || git commit -m "data: nightly refresh"
+          git push
