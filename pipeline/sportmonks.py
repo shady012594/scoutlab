@@ -189,6 +189,15 @@ class Client:
         data = body.get("data") or []
         return data if isinstance(data, list) else [data]
 
+    def player_statistics(self, player_id) -> list[dict]:
+        """Full per-player statistics — richer detail set than the squads include
+        (3-level include is legal from the /players base)."""
+        body = self.get(f"players/{player_id}", {"include": "statistics.details.type"})
+        data = body.get("data") or {}
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        return data.get("statistics") or []
+
     @property
     def calls_made(self) -> int:
         return self._calls

@@ -77,6 +77,14 @@ model:
   #   x peak_haircut                                      <- projection discount
   peak_market_blend: 0.5
   peak_haircut: 0.78
+  # Value falls hard after the peak: multiplier = 1 - decay*(age - peak_age), floored.
+  value_age_decay: 0.16
+  value_age_floor: 0.12
+  # Market liquidity: below the elite tier buyers thin out.
+  # multiplier = clamp((rating - floor_rating) / span, min, 1)
+  liquidity_floor_rating: 58
+  liquidity_span: 20
+  liquidity_min: 0.3
   peak_age: 26
   # Value curve: value_m = value_base * exp(value_slope * (rating - 60)),
   # then shaped by age, market and minutes factors. Tuned so a ~76-rated,

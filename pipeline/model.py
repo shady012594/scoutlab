@@ -173,8 +173,15 @@ def league_lookup(table: dict, league_name: str) -> float:
 def value_from_rating(rating: float, age: int, market_mult: float, minutes_factor: float, mcfg: dict) -> float:
     base = float(mcfg["value_base_m"]) * math.exp(float(mcfg["value_slope"]) * (rating - 60.0))
     peak = int(mcfg.get("peak_age", 26))
-    age_mult = 1.0 if age <= peak else max(0.35, 1.0 - 0.09 * (age - peak))
-    value = base * age_mult * market_mult * (0.6 + 0.4 * minutes_factor)
+    decay = float(mcfg.get("value_age_decay", 0.16))
+    floor_ = float(mcfg.get("value_age_floor", 0.12))
+    age_mult = 1.0 if age <= peak else max(floor_, 1.0 - decay * (age - peak))
+    # Market liquidity: below the elite tier, buyers thin out fast.
+    lf = float(mcfg.get("liquidity_floor_rating", 58))
+    span = float(mcfg.get("liquidity_span", 20))
+    lmin = float(mcfg.get("liquidity_min", 0.3))
+    liquidity = max(lmin, min(1.0, (rating - lf) / span))
+    value = base * age_mult * market_mult * liquidity * (0.6 + 0.4 * minutes_factor)
     return min(value, float(mcfg.get("max_value_m", 180)))
 
 
@@ -263,7 +270,9 @@ def finalize(profile: dict, percentile: float, ctx: dict, cfg: dict) -> dict:
     cur_val = value_from_rating(current, age, market_mult, minutes_factor, mcfg)
     pm = float(mcfg.get("peak_market_blend", 0.5))
     peak_market = pm + (1.0 - pm) * market_mult
-    peak_val = value_from_rating(potential, min(age + 3, mcfg.get("peak_age", 26)),
+    peak = int(mcfg.get("peak_age", 26))
+    pricing_age = min(age + 3, peak) if age < peak else age   # veterans never get re-aged
+    peak_val = value_from_rating(potential, pricing_age,
                                  peak_market, 1.0, mcfg) * float(mcfg.get("peak_haircut", 0.78))
     peak_val = max(peak_val, cur_val * 1.05)
 

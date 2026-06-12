@@ -63,6 +63,15 @@ STAT_LABEL_TO_KEY = {
 }
 
 
+PROFILE_METRICS = [
+    ("goals", "Goals"), ("assists", "Assists"), ("shots", "Shots"),
+    ("key_passes", "Key passes"), ("big_chances", "Big chances created"),
+    ("dribbles", "Dribbles won"), ("duels_won", "Duels won"),
+    ("tackles_int", "Tackles + interceptions"), ("clearances", "Clearances"),
+    ("passes", "Passes completed"),
+]
+
+
 def attach_stat_percentiles(finals):
     """finals: list of (profile, player) for ONE league.
     Adds 'pct' to each per-90 keyStat: rank within league + role pool."""
@@ -72,6 +81,18 @@ def attach_stat_percentiles(finals):
     for pr, pl in finals:
         pool = pools[M.POOLS[pr["pos"]]]
         n = len(pool)
+        profile = []
+        for key, label in PROFILE_METRICS:
+            pool_max = max(q["axes"]["raw"][key] for q in pool)
+            if pool_max <= 0:
+                continue
+            mine = pr["axes"]["raw"][key]
+            less = sum(1 for q in pool if q["axes"]["raw"][key] < mine)
+            equal = sum(1 for q in pool if q["axes"]["raw"][key] == mine)
+            profile.append({"label": label, "per90": round(mine, 2),
+                            "pct": round((less + 0.5 * equal) / n, 3)})
+        pl["statProfile"] = profile
+        pl["statCoverage"] = sum(1 for k, _ in PROFILE_METRICS if pr["axes"]["raw"][k] > 0)
         for stat in pl["keyStats"]:
             key = STAT_LABEL_TO_KEY.get(stat["label"])
             if not key:
@@ -220,12 +241,22 @@ def main() -> int:
                     break
                 print(f"   no squads registered for {season['name']} yet — trying previous season")
 
+            focus_tokens = (cfg.get("focus_club") or "").lower().split()
             # Pass 1: parse + filter every squad entry into a raw profile
             stat_names_seen = {}
             profiles = []
             for team, squad in squads_by_team:
+                is_focus = focus_tokens and all(t in (team.get("name") or "").lower() for t in focus_tokens)
+                if is_focus and squad:
+                    print(f"   deep-fetching full stats for {team.get('name')} ({len(squad)} players)")
                 for entry in squad:
                     player = entry.get("player") or {}
+                    if is_focus and player.get("id"):
+                        try:
+                            rich = client.player_statistics(player["id"])
+                            player["statistics"] = (player.get("statistics") or []) + rich
+                        except SportmonksError as e:
+                            print(f"   (deep fetch failed for {player.get('display_name')}: {e})", file=sys.stderr)
                     per_season = stats_by_season(player, type_map)
                     for bucket in per_season.values():
                         for name in bucket:
@@ -290,7 +321,7 @@ def main() -> int:
             "previousGeneratedAt": prev_generated,
             "focusClub": focus_actual,
             "squadChanges": squad_changes,
-            "model": "scoutlab-heuristic-v1.5",
+            "model": "scoutlab-heuristic-v1.6",
         },
         "players": players,
         "cases": CASE_STUDIES,

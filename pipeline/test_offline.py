@@ -14,7 +14,7 @@ for _ in range(2):   # second run exercises the day-over-day movement pass
 raw = (ROOT / "data" / "scoutlab-data.js").read_text(encoding="utf-8")
 data = json.loads(re.search(r"window\.SCOUTLAB_DATA = (.*);\n$", raw, re.S).group(1).replace("<\\/", "</"))
 players = data["players"]
-assert len(players) == 7, f"expected 7 mock players, got {len(players)}"
+assert len(players) == 8, f"expected 8 mock players, got {len(players)}"
 for p in players:
     assert p["potentialRating"] >= p["currentRating"], p["id"]
     assert p["projectedValueM"] > p["currentValueM"] > 0, p["id"]
@@ -34,7 +34,16 @@ assert hearts and all(p.get("squadRole") and p.get("clubRank") and p.get("jersey
     "focus-club annotation incomplete: " + str([(p["name"], p.get("squadRole"), p.get("jersey"), p["contractUntil"]) for p in hearts])
 assert any(p.get("captain") for p in hearts), "captain flag missing"
 assert all(p.get("photo") for p in players), "photos missing"
+vet = next(p for p in players if "veteran-striker" in p["id"])
+assert vet["currentValueM"] < 5 and vet["projectedValueM"] < 6, \
+    f"veteran pricing too hot: {vet['currentValueM']} -> {vet['projectedValueM']}"
+assert vet["potentialRating"] - vet["currentRating"] <= 1, "veteran given a growth curve"
+striker_d = next(p for p in players if p["id"].startswith("test-striker-d"))
+assert len(striker_d.get("statProfile", [])) >= 6, "deep-fetched stat profile too thin: " + str(striker_d.get("statProfile"))
+assert any("Duels" in s["label"] for s in striker_d["statProfile"]), "merged deep stats missing"
+assert striker_d.get("statCoverage", 0) >= 8, striker_d.get("statCoverage")
 thin = next(p for p in players if "thinstats" in p["id"])
+assert thin.get("statProfile") is not None, "statProfile missing on thin player"
 assert thin["currentRating"] > 52 and all(f["score"] > 30 for f in thin["leagueFits"]), \
     "thin-stats player collapsed to the floor: " + str(thin["currentRating"]) + " " + str([f["score"] for f in thin["leagueFits"]])
 print("OFFLINE TEST PASSED — restore the demo seed or run the live pipeline before publishing.")

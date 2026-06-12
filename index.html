@@ -187,6 +187,14 @@ h1.screen{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:
 .legend{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px;font-size:12.5px;color:var(--t2)}
 .legend .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:4px}
 
+/* ---------- stat profile bars ---------- */
+.sp{display:grid;grid-template-columns:minmax(96px,1.1fr) 2fr 44px 52px;gap:8px;align-items:center;margin-bottom:7px}
+.sp .spl{font-size:11.5px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp .spbar{height:7px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+.sp .spbar span{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,rgba(64,237,140,.5),var(--now))}
+.sp .spv{font-family:var(--mono);font-weight:700;font-size:11.5px;text-align:right}
+.sp .spp{font-size:9.5px;color:var(--blue);text-align:right;white-space:nowrap}
+
 /* ---------- squad hub ---------- */
 :root{--hearts:#8A1538}
 .pphoto{position:relative;flex:none;border-radius:12px;overflow:hidden;background:rgba(255,255,255,.07)}
@@ -544,6 +552,16 @@ function detailScreen(p){
   <div class="card">
     <div class="eyebrow">Attribute profile</div>
     ${radar(p)}
+    ${(p.statProfile && p.statProfile.length) ? `
+    <div style="margin-top:16px">
+      ${p.statProfile.map(s=>`<div class="sp">
+        <span class="spl">${esc(s.label)}</span>
+        <span class="spbar"><span style="width:${Math.max(3, Math.round(s.pct*100))}%"></span></span>
+        <span class="spv">${s.per90.toFixed ? s.per90.toFixed(2) : s.per90}</span>
+        <span class="spp">top ${Math.max(1, Math.round((1-s.pct)*100))}%</span>
+      </div>`).join("")}
+      <div class="caption" style="margin-top:8px;color:var(--t3)">Per-90 output · bar = percentile vs same-role players in this league${typeof p.statCoverage === "number" ? ` · built from ${p.statCoverage} stat types` : ""}</div>
+    </div>` : ""}
   </div>
 
   <div class="card">
