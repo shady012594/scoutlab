@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>ScoutLab — buy low, sell high</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B1213; --card:#171F21; --raise:rgba(255,255,255,.035); --border:rgba(255,255,255,.07);
+  --now:#40ED8C; --peak:#FFBA40; --blue:#66ABFF; --red:#FF616B;
+  --t1:rgba(255,255,255,.94); --t2:rgba(255,255,255,.62); --t3:rgba(255,255,255,.40);
+  --disp:"Barlow Condensed","Arial Narrow","Helvetica Neue Condensed",system-ui,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Segoe UI Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{
+  font-family:var(--body); background:var(--bg); color:var(--t1);
+  font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--now);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- shell ---------- */
+.wrap{max-width:740px;margin:0 auto;padding:0 14px calc(86px + env(safe-area-inset-bottom))}
+header.app{
+  position:relative;max-width:740px;margin:0 auto;padding:20px 14px 10px;overflow:hidden;
+}
+header.app::before{ /* faint centre-circle pitch motif */
+  content:"";position:absolute;right:-70px;top:-110px;width:240px;height:240px;border-radius:50%;
+  border:1.5px solid rgba(64,237,140,.10);pointer-events:none;
+}
+header.app::after{
+  content:"";position:absolute;right:46px;top:6px;width:8px;height:8px;border-radius:50%;
+  background:rgba(64,237,140,.18);pointer-events:none;
+}
+.brand{font-family:var(--disp);font-weight:700;font-size:30px;letter-spacing:.06em;line-height:1}
+.brand .lab{color:var(--now)}
+.tagline{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.tagline span{font-size:11.5px;color:var(--t3);letter-spacing:.04em}
+.demo-pill{
+  font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.12em;
+  color:var(--peak);border:1px solid rgba(255,186,64,.4);border-radius:999px;padding:2px 9px;
+}
+h1.screen{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:.05em;margin:14px 0 12px}
+
+/* ---------- cards & labels ---------- */
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:18px;
+  padding:16px;margin-bottom:14px;
+}
+.eyebrow{
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--disp);font-weight:600;font-size:12.5px;letter-spacing:.16em;
+  color:var(--t3);text-transform:uppercase;margin-bottom:12px;
+}
+.eyebrow::before{content:"";width:3px;height:12px;background:var(--now);border-radius:2px}
+.caption{font-size:12px;color:var(--t2)}
+.fine{font-size:11px;color:var(--t3);text-align:center;padding:4px 10px 14px;line-height:1.5}
+
+/* ---------- now→peak signature ---------- */
+.ntp{display:inline-flex;align-items:baseline;gap:4px;font-family:var(--mono);font-weight:600;white-space:nowrap}
+.ntp .now{color:var(--now)} .ntp .peak{color:var(--peak)}
+.ntp .arr{color:var(--t3);font-size:.78em}
+
+/* ---------- pills & badges ---------- */
+.pill{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;display:inline-block}
+.posbadge{
+  font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.03em;color:var(--bg);
+  width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none;
+}
+
+/* ---------- board rows ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.toolbar input[type=search]{
+  flex:1 1 100%;background:var(--card);border:1px solid var(--border);border-radius:12px;
+  color:var(--t1);padding:9px 12px;font-size:14px;
+}
+.toolbar input[type=search]::placeholder{color:var(--t3)}
+.toolbar select{
+  flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;
+  color:var(--t2);padding:8px 8px;font-size:12.5px;min-width:0;
+}
+.rows{background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden}
+.rowbtn{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.rowbtn:last-child{border-bottom:0}
+.rowbtn:hover{background:rgba(255,255,255,.03)}
+.rowmain{flex:1;min-width:0}
+.rowname{font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowsub{font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowmeta{font-size:11px;color:var(--t3);margin-top:1px}
+.rowright{text-align:right;flex:none}
+.rowright .ntp.big{font-size:15px}
+.rowright .ntp.small{font-size:11.5px;font-weight:600}
+.upside{font-size:10.5px;color:var(--t3);font-family:var(--mono);margin-top:1px}
+.chev{color:var(--t3);flex:none;font-size:13px}
+.empty-note{padding:14px;font-size:11px;color:var(--t3);border-top:1px solid rgba(255,255,255,.05)}
+
+/* ---------- detail ---------- */
+.backbtn{
+  display:inline-flex;align-items:center;gap:6px;color:var(--now);
+  font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.06em;margin:14px 0 10px;
+}
+.dhead{display:flex;align-items:flex-start;gap:12px}
+.dhead h2{font-family:var(--disp);font-weight:700;font-size:27px;letter-spacing:.03em;line-height:1.05}
+.dhead .club{color:var(--t2);font-size:13px;margin-top:2px}
+.starbtn{
+  flex:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--t3);
+}
+.starbtn.on{color:var(--peak);border-color:rgba(255,186,64,.45);background:rgba(255,186,64,.08)}
+.pillrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.gauges{display:flex;justify-content:space-around;gap:8px;text-align:center}
+.gauge svg{display:block;margin:0 auto}
+.gauge .glabel{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.14em;color:var(--t2);margin-top:7px}
+.gauge text{font-family:var(--mono);font-weight:700;font-size:26px}
+.gapnote{margin-top:12px;text-align:center;font-size:12px;color:var(--t3)}
+.vbars{display:grid;gap:10px;margin-top:4px}
+.vbar .vlab{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:4px}
+.vbar .vlab .k{font-family:var(--disp);font-weight:600;letter-spacing:.12em;color:var(--t3)}
+.vbar .vlab .v{font-family:var(--mono);font-weight:700}
+.vtrack{height:12px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden}
+.vfill{height:100%;border-radius:6px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.stat{background:var(--raise);border-radius:12px;padding:11px 12px}
+.stat .sv{font-family:var(--mono);font-weight:700;font-size:16.5px;color:var(--now)}
+.stat .sl{font-size:10.5px;color:var(--t3);letter-spacing:.03em;text-transform:uppercase;margin-top:2px}
+.fit{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.fit:last-child{border-bottom:0;padding-bottom:0}
+.fit .ftop{display:flex;justify-content:space-between;align-items:baseline}
+.fit .fl{font-weight:600;font-size:14px}
+.fit .fs{font-family:var(--mono);font-weight:700;font-size:14px}
+.ftrack{height:6px;border-radius:3px;background:rgba(255,255,255,.07);margin:6px 0 5px;overflow:hidden}
+.ffill{height:100%;border-radius:3px}
+.fit .fn{font-size:12px;color:var(--t2)}
+.intel{display:grid;gap:9px}
+.intel .it{display:flex;gap:9px;font-size:13px;color:var(--t2)}
+.intel .it::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--blue);margin-top:6px}
+.report{font-size:13.5px;color:var(--t2);line-height:1.55}
+
+/* ---------- markets ---------- */
+.chipgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.chip{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 14px}
+.chip .cv{font-family:var(--mono);font-weight:700;font-size:22px;line-height:1.1}
+.chip .cl{font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.13em;color:var(--t3);text-transform:uppercase;margin-top:4px}
+.gaprow{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.gaprow:last-of-type{border-bottom:0;padding-bottom:0}
+.gaprow .rank{font-family:var(--mono);font-weight:700;color:var(--t3);width:18px;flex:none}
+.gaprow .gmain{flex:1;min-width:0}
+.gaprow .gname{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gaprow .gclub{font-size:11.5px;color:var(--t2)}
+.gaprow .gright{text-align:right;flex:none}
+.gaprow .gap{font-family:var(--mono);font-weight:700;color:var(--peak);font-size:14px}
+.mrow{margin-bottom:11px}
+.mrow:last-child{margin-bottom:0}
+.mrow .mtop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.mrow .mk{font-family:var(--disp);font-weight:600;font-size:14px;letter-spacing:.1em}
+.mrow .mg{font-family:var(--mono);font-weight:700;color:var(--peak);font-size:13px}
+.mtrack{height:14px;border-radius:7px;background:rgba(255,255,255,.07);overflow:hidden}
+.mfill{height:100%;border-radius:7px;background:linear-gradient(90deg,rgba(255,186,64,.55),var(--peak))}
+.mrow .mmeta{font-size:10.5px;color:var(--t3);margin-top:3px;font-family:var(--mono)}
+.case{background:var(--raise);border-radius:12px;padding:12px;margin-bottom:9px}
+.case:last-child{margin-bottom:0}
+.case .cp{font-weight:700;font-size:14px}
+.case .cpath{font-size:11.5px;color:var(--blue);margin:2px 0 5px}
+.case .cnote{font-size:12px;color:var(--t2);margin-top:4px}
+
+/* ---------- model ---------- */
+.method{display:flex;gap:12px;margin-bottom:13px}
+.method:last-child{margin-bottom:0}
+.method .mi{
+  flex:none;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;
+}
+.method .mt{font-weight:600;font-size:14px}
+.method .mb{font-size:12.5px;color:var(--t2);margin-top:2px}
+.prose p{font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:10px}
+.prose p:last-child{margin-bottom:0}
+.legend{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px;font-size:12.5px;color:var(--t2)}
+.legend .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:4px}
+
+/* ---------- empty states ---------- */
+.emptywrap{text-align:center;padding:46px 20px}
+.emptywrap .eicon{font-size:34px;opacity:.45}
+.emptywrap h3{font-family:var(--disp);font-weight:600;font-size:19px;letter-spacing:.05em;margin:10px 0 6px;color:var(--t2)}
+.emptywrap p{font-size:12.5px;color:var(--t3);max-width:300px;margin:0 auto 16px}
+.cta{
+  font-family:var(--disp);font-weight:600;font-size:14px;letter-spacing:.08em;
+  color:var(--bg);background:var(--now);border-radius:999px;padding:9px 20px;
+}
+
+/* ---------- bottom nav ---------- */
+nav.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:10;
+  background:rgba(13,19,20,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+nav.tabs .inner{max-width:740px;margin:0 auto;display:flex}
+nav.tabs button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:9px 4px 8px;color:var(--t3);
+  font-family:var(--disp);font-weight:600;font-size:11.5px;letter-spacing:.1em;
+}
+nav.tabs button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button.on{color:var(--now)}
+nav.tabs button .badge{position:relative}
+nav.tabs button .badge .n{
+  position:absolute;top:-4px;right:-9px;background:var(--peak);color:var(--bg);
+  font-family:var(--mono);font-weight:700;font-size:9px;border-radius:999px;min-width:14px;height:14px;
+  display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+@media (min-width:560px){
+  .statgrid{grid-template-columns:1fr 1fr 1fr 1fr}
+  .chipgrid{grid-template-columns:repeat(4,1fr)}
+}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="brand">SCOUT<span class="lab">LAB</span></div>
+  <div class="tagline">
+    <span class="demo-pill" id="srcpill">DEMO DATA</span>
+    <span id="metaline">Buy low · develop · sell into demand — the Jamestown playbook, on a board.</span>
+  </div>
+</header>
+
+<main class="wrap" id="main"></main>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="inner">
+    <button data-tab="board" aria-label="Scout Board">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>BOARD
+    </button>
+    <button data-tab="markets" aria-label="Markets">
+      <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>MARKETS
+    </button>
+    <button data-tab="watchlist" aria-label="Watchlist">
+      <span class="badge"><svg viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg><span class="n" id="watchcount" hidden></span></span>WATCHLIST
+    </button>
+    <button data-tab="model" aria-label="The Model">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3.4M12 18.1v3.4M2.5 12h3.4M18.1 12h3.4M5.3 5.3l2.4 2.4M16.3 16.3l2.4 2.4M18.7 5.3l-2.4 2.4M7.7 16.3l-2.4 2.4"/></svg>MODEL
+    </button>
+  </div>
+</nav>
+
+<script src="data/scoutlab-data.js"></script>
+<script>
+"use strict";
+/* ====== DATA — written by pipeline/build_data.py (or the seeded demo file) ====== */
+const DATA = window.SCOUTLAB_DATA;
+if (!DATA || !Array.isArray(DATA.players) || !DATA.players.length) {
+  document.getElementById("main").innerHTML =
+    '<div class="card"><div class="eyebrow">No data loaded</div>' +
+    '<p class="caption">data/scoutlab-data.js is missing or empty. Run the pipeline (see README) or restore the seeded demo file.</p></div>';
+  throw new Error("SCOUTLAB_DATA missing");
+}
+const META = DATA.meta || {};
+
+/* ====== domain helpers ====== */
+const POS = {
+  st:{label:"Striker",     color:"var(--red)"},
+  w :{label:"Winger",      color:"var(--peak)"},
+  am:{label:"Attacking Mid",color:"var(--peak)"},
+  cm:{label:"Central Mid", color:"var(--now)"},
+  cb:{label:"Centre Back", color:"var(--blue)"},
+  fb:{label:"Full Back",   color:"var(--blue)"}
+};
+const RISK = {
+  low:{label:"Low risk", color:"var(--now)",  bg:"rgba(64,237,140,.13)"},
+  medium:{label:"Medium risk", color:"var(--peak)", bg:"rgba(255,186,64,.13)"},
+  high:{label:"High risk", color:"var(--red)", bg:"rgba(255,97,107,.13)"}
+};
+const RADAR_LABELS = ["TEC","PHY","PAC","VIS","FIN","DEF"];
+const RADAR_KEYS   = ["technique","physical","pace","vision","finishing","defending"];
+
+const players = DATA.players.map(p => ({
+  ...p,
+  gap: p.projectedValueM - p.currentValueM,
+  mult: p.currentValueM > 0 ? p.projectedValueM / p.currentValueM : 0
+}));
+const byId = Object.fromEntries(players.map(p => [p.id, p]));
+
+const euro = m => "€" + (m >= 9.95 ? Math.round(m) : m.toFixed(1)) + "M";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ntp = (a, b, cls="") => `<span class="ntp ${cls}"><b class="now">${esc(a)}</b><span class="arr">→</span><b class="peak">${esc(b)}</b></span>`;
+
+/* ====== state ====== */
+const state = {
+  tab: "board",
+  detail: null,          // player id when a detail screen is open
+  from: "board",         // tab to return to from detail
+  q: "", pos: "", mkt: "",
+  sort: "gap",
+  watch: new Set()       // session only — no storage APIs used
+};
+
+const SORTS = {
+  gap:      {label:"Value gap (€)",        fn:(a,b)=>b.gap-a.gap},
+  mult:     {label:"Upside multiple",      fn:(a,b)=>b.mult-a.mult},
+  potential:{label:"Potential rating",     fn:(a,b)=>b.potentialRating-a.potentialRating},
+  age:      {label:"Age (youngest first)", fn:(a,b)=>a.age-b.age},
+  value:    {label:"Current value",        fn:(a,b)=>b.currentValueM-a.currentValueM}
+};
+
+/* ====== reusable fragments ====== */
+function posBadge(p){ return `<span class="posbadge" style="background:${POS[p.position].color}">${esc(p.position.toUpperCase())}</span>`; }
+
+function playerRow(p){
+  return `<button class="rowbtn" data-open="${p.id}">
+    ${posBadge(p)}
+    <span class="rowmain">
+      <span class="rowname">${esc(p.flag)} ${esc(p.name)}</span>
+      <span class="rowsub">${esc(p.club)} · ${esc(p.league)}</span>
+      <span class="rowmeta">Age ${p.age} · Contract ${esc(p.contractUntil)}</span>
+    </span>
+    <span class="rowright">
+      ${ntp(p.currentRating, p.potentialRating, "big")}<br>
+      ${ntp(euro(p.currentValueM), euro(p.projectedValueM), "small")}
+      <div class="upside">${p.mult.toFixed(1)}× upside</div>
+    </span>
+    <span class="chev">›</span>
+  </button>`;
+}
+
+function ringGauge(value, color, label){
+  const r = 41, C = 2 * Math.PI * r, off = C * (1 - Math.min(Math.max(value,0),100) / 100);
+  return `<div class="gauge">
+    <svg width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="${esc(label)} ${value} of 100">
+      <circle cx="48" cy="48" r="${r}" stroke="rgba(255,255,255,.08)" stroke-width="9" fill="none"/>
+      <circle cx="48" cy="48" r="${r}" stroke="${color}" stroke-width="9" fill="none"
+        stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
+        transform="rotate(-90 48 48)"/>
+      <text x="48" y="57" text-anchor="middle" fill="${color}">${value}</text>
+    </svg>
+    <div class="glabel">${esc(label)}</div>
+  </div>`;
+}
+
+function radar(p){
+  const cx=130, cy=130, R=88, n=6;
+  const pt=(i,r)=>{const a=(i/n)*2*Math.PI - Math.PI/2; return [cx+r*Math.cos(a), cy+r*Math.sin(a)];};
+  const poly = r => Array.from({length:n},(_,i)=>pt(i,r).map(v=>v.toFixed(1)).join(",")).join(" ");
+  const vals = RADAR_KEYS.map(k => p.attributes[k]);
+  const shape = vals.map((v,i)=>pt(i, R*Math.min(Math.max(v,0),100)/100).map(x=>x.toFixed(1)).join(",")).join(" ");
+  const rings = [1,2,3,4].map(k=>`<polygon points="${poly(R*k/4)}" fill="none" stroke="rgba(255,255,255,.08)"/>`).join("");
+  const axes  = Array.from({length:n},(_,i)=>{const [x,y]=pt(i,R);return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.08)"/>`;}).join("");
+  const labels = RADAR_LABELS.map((l,i)=>{const [x,y]=pt(i,R+19);return `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(255,255,255,.62)">${l}</text>`;}).join("");
+  return `<svg viewBox="0 0 260 260" width="100%" style="max-width:280px;display:block;margin:0 auto" role="img" aria-label="Attribute radar">
+    ${rings}${axes}
+    <polygon points="${shape}" fill="rgba(64,237,140,.22)" stroke="var(--now)" stroke-width="2"/>
+    ${labels}
+  </svg>`;
+}
+
+function fitColor(s){ return s>=85 ? "var(--now)" : s>=75 ? "var(--peak)" : "var(--blue)"; }
+
+/* ====== screens ====== */
+function boardScreen(){
+  const mkts = [...new Set(players.map(p=>p.league))].sort();
+  return `
+  <h1 class="screen">Scout Board</h1>
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Player, club, league or nation" value="${esc(state.q)}" aria-label="Search players">
+    <select id="fpos" aria-label="Filter by position">
+      <option value="">All positions</option>
+      ${Object.entries(POS).map(([k,v])=>`<option value="${k}" ${state.pos===k?"selected":""}>${k.toUpperCase()} · ${v.label}</option>`).join("")}
+    </select>
+    <select id="fmkt" aria-label="Filter by market">
+      <option value="">All markets</option>
+      ${mkts.map(m=>`<option ${state.mkt===m?"selected":""}>${esc(m)}</option>`).join("")}
+    </select>
+    <select id="fsort" aria-label="Sort">
+      ${Object.entries(SORTS).map(([k,v])=>`<option value="${k}" ${state.sort===k?"selected":""}>Sort: ${v.label}</option>`).join("")}
+    </select>
+  </div>
+  <div id="list"></div>
+  <p class="fine">Ratings, league fits and values are this app's own model estimates — not Jamestown Analytics data, not real market prices.</p>`;
+}
+
+function renderList(){
+  const q = state.q.trim().toLowerCase();
+  let list = players.filter(p =>
+    (!state.pos || p.position === state.pos) &&
+    (!state.mkt || p.league === state.mkt) &&
+    (!q || [p.name,p.club,p.league,p.nationality].some(f=>f.toLowerCase().includes(q)))
+  );
+  list.sort(SORTS[state.sort].fn);
+  const total = list.length;
+  const CAP = 300;
+  const shown = list.slice(0, CAP);
+  const el = document.getElementById("list");
+  el.innerHTML = total
+    ? `<div class="rows">${shown.map(playerRow).join("")}${
+        total > CAP ? `<div class="empty-note">Showing top ${CAP} of ${total} by ${SORTS[state.sort].label.toLowerCase()} — narrow with search or filters.</div>` : ""
+      }</div>`
+    : `<div class="rows"><div class="emptywrap"><div class="eicon">⌕</div><h3>No players match</h3><p>Clear the search or filters to see the full board.</p></div></div>`;
+}
+
+function detailScreen(p){
+  const watched = state.watch.has(p.id);
+  const vmax = p.projectedValueM * 1.15;
+  return `
+  <button class="backbtn" data-back>‹ ${state.from === "board" ? "Scout Board" : state.from === "markets" ? "Markets" : "Watchlist"}</button>
+
+  <div class="card">
+    <div class="dhead">
+      ${posBadge(p)}
+      <div style="flex:1;min-width:0">
+        <h2>${esc(p.flag)} ${esc(p.name)}</h2>
+        <div class="club">${esc(p.club)} · ${esc(p.league)}</div>
+      </div>
+      <button class="starbtn ${watched?"on":""}" data-star="${p.id}" aria-pressed="${watched}" aria-label="${watched?"Remove from":"Add to"} watchlist">${watched?"★":"☆"}</button>
+    </div>
+    <div class="pillrow">
+      <span class="pill" style="color:${POS[p.position].color};background:rgba(255,255,255,.06)">${POS[p.position].label}</span>
+      <span class="pill" style="color:var(--t2);background:rgba(255,255,255,.06)">Age ${p.age}</span>
+      <span class="pill" style="color:var(--t2);background:rgba(255,255,255,.06)">Contract ${esc(p.contractUntil)}</span>
+      <span class="pill" style="color:${RISK[p.risk].color};background:${RISK[p.risk].bg}">${RISK[p.risk].label}</span>
+      <span class="pill" style="color:var(--t3);background:rgba(255,255,255,.05)">Data: ${esc(p.asOf)}</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Ratings · now → peak</div>
+    <div class="gauges">
+      ${ringGauge(p.currentRating, "var(--now)", "NOW")}
+      ${ringGauge(p.potentialRating, "var(--peak)", "PEAK CASE")}
+    </div>
+    <div class="gapnote">+${p.potentialRating - p.currentRating} rating points of projected development</div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Valuation · the gap is the trade</div>
+    <div class="vbars">
+      <div class="vbar">
+        <div class="vlab"><span class="k">VALUE TODAY</span><span class="v" style="color:var(--now)">${euro(p.currentValueM)}</span></div>
+        <div class="vtrack"><div class="vfill" style="width:${(p.currentValueM/vmax*100).toFixed(1)}%;background:var(--now)"></div></div>
+      </div>
+      <div class="vbar">
+        <div class="vlab"><span class="k">PEAK CASE</span><span class="v" style="color:var(--peak)">${euro(p.projectedValueM)}</span></div>
+        <div class="vtrack"><div class="vfill" style="width:${(p.projectedValueM/vmax*100).toFixed(1)}%;background:var(--peak)"></div></div>
+      </div>
+    </div>
+    <div class="gapnote">+${euro(p.gap)} value gap · ${p.mult.toFixed(1)}× upside multiple</div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Attribute profile</div>
+    ${radar(p)}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Key numbers</div>
+    <div class="statgrid">
+      ${p.keyStats.map(s=>`<div class="stat"><div class="sv">${esc(s.value)}</div><div class="sl">${esc(s.label)}</div></div>`).join("")}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Where he'd thrive · league fits</div>
+    ${p.leagueFits.map(f=>`
+      <div class="fit">
+        <div class="ftop"><span class="fl">${esc(f.league)}</span><span class="fs" style="color:${fitColor(f.score)}">${f.score}</span></div>
+        <div class="ftrack"><div class="ffill" style="width:${f.score}%;background:${fitColor(f.score)}"></div></div>
+        <div class="fn">${esc(f.note)}</div>
+      </div>`).join("")}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Market intel</div>
+    <div class="intel">${p.comps.map(c=>`<div class="it"><span>${esc(c)}</span></div>`).join("")}</div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Scout report</div>
+    <div class="report">${esc(p.notes)}</div>
+  </div>
+
+  <p class="fine">Illustrative demo profile — not real scouting output.</p>`;
+}
+
+function marketsScreen(){
+  const totalGap = players.reduce((a,p)=>a+p.gap,0);
+  const avgAge = players.reduce((a,p)=>a+p.age,0)/players.length;
+  const avgMult = players.reduce((a,p)=>a+p.mult,0)/players.length;
+  const top = [...players].sort((a,b)=>b.gap-a.gap).slice(0,5);
+
+  const groups = {};
+  players.forEach(p=>{(groups[p.leagueCode] ||= []).push(p);});
+  const rows = Object.entries(groups).map(([code,g])=>({
+    code, gap:g.reduce((a,p)=>a+p.gap,0), count:g.length,
+    avgMult:g.reduce((a,p)=>a+p.mult,0)/g.length
+  })).sort((a,b)=>b.gap-a.gap);
+  const maxGap = Math.max(...rows.map(r=>r.gap), 1);
+
+  return `
+  <h1 class="screen">Markets</h1>
+  <div class="chipgrid">
+    <div class="chip"><div class="cv" style="color:var(--blue)">${players.length}</div><div class="cl">Players tracked</div></div>
+    <div class="chip"><div class="cv" style="color:var(--peak)">${euro(totalGap)}</div><div class="cl">Total value gap</div></div>
+    <div class="chip"><div class="cv" style="color:var(--now)">${avgAge.toFixed(1)}</div><div class="cl">Average age</div></div>
+    <div class="chip"><div class="cv" style="color:var(--peak)">${avgMult.toFixed(1)}×</div><div class="cl">Avg upside multiple</div></div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Top value gaps</div>
+    ${top.map((p,i)=>`
+      <button class="gaprow" data-open="${p.id}">
+        <span class="rank">${i+1}</span>
+        <span class="gmain">
+          <span class="gname">${esc(p.flag)} ${esc(p.name)}</span><br>
+          <span class="gclub">${esc(p.club)}</span>
+        </span>
+        <span class="gright">
+          <span class="gap">+${euro(p.gap)}</span><br>
+          ${ntp(euro(p.currentValueM), euro(p.projectedValueM), "small")}
+        </span>
+        <span class="chev">›</span>
+      </button>`).join("")}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Value gap by market</div>
+    <p class="caption" style="margin-bottom:12px">Where the board's unrealised value is pooled — the leagues the model thinks the wider market is mispricing.</p>
+    ${rows.map(r=>`
+      <div class="mrow">
+        <div class="mtop"><span class="mk">${esc(r.code)}</span><span class="mg">${euro(r.gap)}</span></div>
+        <div class="mtrack"><div class="mfill" style="width:${(r.gap/maxGap*100).toFixed(1)}%"></div></div>
+        <div class="mmeta">${r.count} player${r.count>1?"s":""} · avg ${r.avgMult.toFixed(1)}× upside</div>
+      </div>`).join("")}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Track record · the playbook in practice</div>
+    <p class="caption" style="margin-bottom:12px">Public examples of the buy-low, sell-high pipeline associated with Bloom-network clubs.</p>
+    ${(DATA.cases||[]).map(c=>`
+      <div class="case">
+        <div class="cp">${esc(c.player)}</div>
+        <div class="cpath">${esc(c.path)}</div>
+        ${ntp(c.bought, c.sold, "small")}
+        <div class="cnote">${esc(c.note)}</div>
+      </div>`).join("")}
+  </div>
+  <p class="fine">Model estimates · not Jamestown Analytics data, not real market prices.</p>`;
+}
+
+function watchlistScreen(){
+  const list = players.filter(p=>state.watch.has(p.id));
+  if(!list.length){
+    return `<h1 class="screen">Watchlist</h1>
+    <div class="rows"><div class="emptywrap">
+      <div class="eicon">☆</div>
+      <h3>No players starred</h3>
+      <p>Star players from the Scout Board to build your shortlist for this session.</p>
+      <button class="cta" data-tabgo="board">Open the Scout Board</button>
+    </div></div>`;
+  }
+  return `<h1 class="screen">Watchlist</h1>
+  <div class="rows">
+    ${list.map(playerRow).join("")}
+    <div class="empty-note">Tap a player, then the star, to remove. Watchlist lasts for this session and resets on reload.</div>
+  </div>`;
+}
+
+function modelScreen(){
+  const method = (icon,color,bg,title,text)=>`
+    <div class="method">
+      <div class="mi" style="color:${color};background:${bg}">${icon}</div>
+      <div><div class="mt">${title}</div><div class="mb">${text}</div></div>
+    </div>`;
+  return `
+  <h1 class="screen">The Model</h1>
+
+  <div class="card">
+    <div class="eyebrow">The playbook</div>
+    ${method("⌖","var(--blue)","rgba(102,171,255,.13)","Hunt where others don't","The biggest pricing errors live in lower divisions and 'unfashionable' leagues — Ecuador, Belgium, Denmark, the J-League, the Championship. Less scouting coverage means more mispriced talent.")}
+    ${method("∿","var(--now)","rgba(64,237,140,.13)","Trust underlying numbers over highlights","Goals are noisy. Expected goals, progressive carries, duel win rates and possession-adjusted output are far more stable predictors of how a player translates upward.")}
+    ${method("◔","var(--peak)","rgba(255,186,64,.13)","Buy the age curve","Most outfield players peak around 25–28. Buying at 18–21 means you own the entire improvement curve; the market routinely underprices how steep it is.")}
+    ${method("⇄","var(--red)","rgba(255,97,107,.13)","Sell into demand, replace from the pipeline","When a big club calls, sell — then re-run the model. The edge isn't one transfer; it's repeating the loop while keeping the team competitive.")}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Signals a model like this weighs</div>
+    ${method("◍","var(--blue)","rgba(102,171,255,.13)","League-strength conversion","How output in one league historically translates to another. A goal in the Danish Superliga is not a Premier League goal — but it converts at a knowable rate.")}
+    ${method("◎","var(--now)","rgba(64,237,140,.13)","Finishing luck vs. real signal","A striker overshooting his xG for one season is often luck; elite chance volume rarely is. The model separates the two before believing a hot streak.")}
+    ${method("✎","var(--peak)","rgba(255,186,64,.13)","Contract leverage","Years remaining drive price as much as talent. Long deals protect the selling club; short deals create discounts — and opportunities.")}
+    ${method("⚡","var(--red)","rgba(255,97,107,.13)","Availability and physical robustness","Minutes played is a skill. Injury history and load tolerance separate a bargain from a write-off at the same headline price.")}
+    ${method("⬡","var(--blue)","rgba(102,171,255,.13)","Style transferability","A pressing-league winger may not fit a possession league. League-fit scores in this app mimic that idea: project the player into a context, not just a rating.")}
+  </div>
+
+  <div class="card prose">
+    <div class="eyebrow">The Bloom network · why this works in real life</div>
+    <p>Jamestown Analytics, founded in 2017 as an offshoot of Tony Bloom's betting consultancy Starlizard, sells data-driven recruitment to a small set of clubs from an office on Jamestown Road in Camden, London. Clients pay annually for player and coach recruitment, valuations and opposition analysis tailored to their own criteria.</p>
+    <p>The visible results are striking. Brighton turned data-led buys like Moisés Caicedo, Alexis Mac Allister, Marc Cucurella and Kaoru Mitoma into enormous profits while climbing the Premier League. Union Saint-Gilloise won the 2025 Belgian title — their first in 90 years — and beat Atalanta in the Champions League in January 2026. Hearts, backed by roughly £10M of Bloom investment, led the Scottish Premiership in early 2026. Como and Castellón run versions of the same model in Italy and Spain.</p>
+    <p>The common thread: a proprietary statistical model finds players the market underrates, the club buys them cheaply, develops them in a real first team, and sells into demand — then repeats.</p>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Reading this board</div>
+    <div class="legend"><span class="dot" style="background:var(--now)"></span><span>Green is always <em>today</em> — current rating, current market value.</span></div>
+    <div class="legend"><span class="dot" style="background:var(--peak)"></span><span>Amber is always <em>the ceiling</em> — potential rating, peak-case value.</span></div>
+    <div class="legend"><span class="dot" style="background:var(--blue)"></span><span>Blue marks context — leagues, paths, market intel.</span></div>
+    <p class="caption" style="margin-top:4px;color:var(--t3)">The gap between green and amber is the whole game: that's the value a scouting model is trying to buy before everyone else can see it.</p>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Disclaimer</div>
+    <p class="caption">ScoutLab is a demo built for learning and fun. It has no affiliation with Jamestown Analytics, Starlizard, Tony Bloom or any club. Current and potential ratings, league-fit scores and peak-case valuations are illustrative estimates created for this app — they are not real scouting data. Market values are approximate public estimates dated per player (early–mid 2026) and will drift out of date. Don't bet, buy or sell anything based on this app.</p>
+  </div>`;
+}
+
+/* ====== render & events ====== */
+const main = document.getElementById("main");
+
+function render(){
+  if(state.detail){
+    main.innerHTML = detailScreen(byId[state.detail]);
+  } else if(state.tab === "board"){
+    main.innerHTML = boardScreen();
+    renderList();
+    const q = document.getElementById("q");
+    q.addEventListener("input", e => { state.q = e.target.value; renderList(); });
+    document.getElementById("fpos").addEventListener("change", e => { state.pos = e.target.value; renderList(); });
+    document.getElementById("fmkt").addEventListener("change", e => { state.mkt = e.target.value; renderList(); });
+    document.getElementById("fsort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
+  } else if(state.tab === "markets"){
+    main.innerHTML = marketsScreen();
+  } else if(state.tab === "watchlist"){
+    main.innerHTML = watchlistScreen();
+  } else {
+    main.innerHTML = modelScreen();
+  }
+  document.querySelectorAll("nav.tabs button").forEach(b =>
+    b.classList.toggle("on", !state.detail && b.dataset.tab === state.tab));
+  const wc = document.getElementById("watchcount");
+  wc.hidden = state.watch.size === 0;
+  wc.textContent = state.watch.size;
+  window.scrollTo(0, 0);
+}
+
+document.querySelector("nav.tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if(!b) return;
+  state.detail = null;
+  state.tab = b.dataset.tab;
+  render();
+});
+
+main.addEventListener("click", e => {
+  const open = e.target.closest("[data-open]");
+  if(open){ state.from = state.tab; state.detail = open.dataset.open; render(); return; }
+  if(e.target.closest("[data-back]")){ state.detail = null; render(); return; }
+  const star = e.target.closest("[data-star]");
+  if(star){
+    const id = star.dataset.star;
+    state.watch.has(id) ? state.watch.delete(id) : state.watch.add(id);
+    render(); return;
+  }
+  const go = e.target.closest("[data-tabgo]");
+  if(go){ state.tab = go.dataset.tabgo; render(); }
+});
+
+/* ====== header meta line ====== */
+(function(){
+  const pill = document.getElementById("srcpill");
+  const line = document.getElementById("metaline");
+  if (META.demo === false) pill.textContent = "MODEL DATA";
+  const bits = [];
+  if (META.generatedAt) bits.push("Updated " + new Date(META.generatedAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}));
+  bits.push(players.length + " players");
+  if (META.source) bits.push(META.source);
+  line.textContent = bits.join(" · ");
+})();
+
+render();
+</script>
+</body>
+</html>
